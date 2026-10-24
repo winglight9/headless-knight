@@ -53,7 +53,25 @@ public enum HKMLog {
         if let data = line.data(using: .utf8) {
             FileHandle.standardError.write(data)
         }
+        // 跑测试的时候不许写进用户真实的 app.log。
+        //
+        // 测试里的 AppState 会照常调 HKMLog，一次 `swift test` 就能往日志里灌进
+        // 几十行「请求系统睡眠」「锁定设置 ✓」——全是假的。真机出问题去翻日志时，
+        // 这些假记录会把人带偏（已经带偏过一次）。
+        guard !isRunningTests else { return }
         appendToFile(line)
+    }
+
+    /// 当前进程是不是测试运行器。
+    ///
+    /// `swift test` 用的是 SwiftPM 的 `swiftpm-testing-helper`，`Bundle.main` 指到
+    /// `/Library/Developer/CommandLineTools/usr/libexec/swift/pm`——既不是 `.xctest`
+    /// 包，进程名也不带 PackageTests。Xcode 里跑则是 `xctest`。两种都认。
+    private static var isRunningTests: Bool {
+        let process = ProcessInfo.processInfo.processName
+        if process == "swiftpm-testing-helper" || process == "xctest" { return true }
+        if Bundle.main.bundlePath.contains(".xctest") { return true }
+        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     private static func appendToFile(_ line: String) {

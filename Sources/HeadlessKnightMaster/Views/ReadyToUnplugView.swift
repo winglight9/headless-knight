@@ -69,7 +69,11 @@ struct ReadyToUnplugView: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.ink)
                                 .lineSpacing(2)
-                            Text("会自动重试，插回显示器就停。也可以现在再试一次")
+                            // 后台重试只在「线已经拔了」的时候才跑。显示器还插着的时候
+                            // 说「会自动重试」是假话——它压根不会重试，试了也只是闪屏。
+                            Text(state.displaysDetached
+                                ? "会自动重试，插回显示器就停"
+                                : "拔掉线之后它会自己睡，不用再点")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .lineSpacing(2)
@@ -85,8 +89,12 @@ struct ReadyToUnplugView: View {
 
                 // 兜底：万一哪台机器的显示器拓扑识别不出来，用户还能直接按一下。
                 // 产品不能因为「自动检测猜错了」就把人卡死在这一页。
+                //
+                // 名字必须写清它是干什么的。以前叫「现在就让电脑睡眠」，用户会当成
+                // 「我想现在睡」去点——可显示器还插着的时候，这一按只会让屏幕黑一下
+                // 又亮回来。它真正的用途是「我拔了，你没发现」。
                 if sleepFailureReason == nil, !state.displaysDetached {
-                    PopupButton(title: "现在就让电脑睡眠", style: .ghost, isEnabled: !state.isBusy) {
+                    PopupButton(title: "我已经拔线了，让它睡", style: .ghost, isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
                     .padding(.top, 12)

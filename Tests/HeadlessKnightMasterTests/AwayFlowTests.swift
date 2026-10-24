@@ -155,6 +155,33 @@ struct AwayFlowHappyPathTests {
         #expect(harness.sim.pmsetValues["womp"] == 0)
     }
 
+    @Test("显示器还插着就点「让电脑睡眠」：只试一次，别把屏幕闪三下")
+    func manualSleepWithDisplayAttachedTriesOnce() async {
+        let harness = AwayHarness { sim in
+            twoBlockers(sim)
+            // 真机上表现是：屏幕黑一下又被拽回来，pmset 日志里没有 Entering Sleep。
+            sim.sleepNowFails = "系统没有进入睡眠"
+            sim.sleepSucceeds = false
+        }
+        await harness.enterAway()
+        #expect(harness.state.screen == .readyToUnplug)
+        // 线一直没拔。
+        #expect(harness.state.displaysDetached == false)
+
+        harness.state.retrySleep()
+        await AwayHarness.waitUntil {
+            if case .failed = harness.state.sleepOutcome { return true }
+            return false
+        }
+
+        // 关键：只请求一次。以前是 1...3，屏幕会连闪三下。
+        #expect(harness.sim.sleepNowCalls == 1)
+        #expect(harness.state.screen == .readyToUnplug)
+        #expect(harness.state.errorMessage?.contains("显示器还插着") == true)
+        // 没拔线就不会有后台重试，别在文案里许诺「会自动重试」。
+        #expect(harness.state.displaysDetached == false)
+    }
+
     @Test("拔线后请求睡眠，状态变成外出中")
     func unplugTriggersSleep() async {
         let harness = AwayHarness { twoBlockers($0) }

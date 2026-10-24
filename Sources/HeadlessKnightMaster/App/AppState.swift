@@ -1081,7 +1081,16 @@ public final class AppState: ObservableObject {
         var lastReason: String?
         var slept = false
 
-        for attempt in 1...3 {
+        // 显示器还插着的时候，「让系统睡眠」实际发生的是：屏幕黑一下 → WindowServer
+        // 立刻抓一个 PreventSystemSleep 把系统拽回来 → 屏幕又亮。连试三次就是连闪
+        // 三下，用户的原话是「反复黑屏亮屏」。
+        //
+        // 所以这种情况下只试一次：成不成一次就看出来了，第二次只是再闪一下。
+        // 真拔了线之后（自动流程）没有屏幕可闪，多试几次才有意义。
+        let displayStillAttached = !isDisplayDetached()
+        let maxAttempts = displayStillAttached ? 1 : 3
+
+        for attempt in 1...maxAttempts {
             if attempt > 1 {
                 // 拔掉显示器的那一刻 WindowServer 会临时抓一个 PreventSystemSleep，
                 // 几秒后自己放掉。第一次叫不醒多半就是它，等一下再叫一次就好。
@@ -1155,7 +1164,11 @@ public final class AppState: ObservableObject {
             screen = .readyToUnplug
             iconState = .alert
         }
-        errorMessage = "没能让电脑睡着：\(reason)"
+        // 「系统没有进入睡眠」这句是循环论证，用户看完还是不知道为什么。
+        // 屏幕还插着的时候原因其实很确定：刚睡下就被屏幕的重新配置拽回来了。
+        errorMessage = displayStillAttached
+            ? "显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡"
+            : "没能让电脑睡着：\(reason)"
         narrate("→ 睡眠失败：\(reason)")
         deps.notifier.post(title: "没能进入睡眠", body: "电脑还醒着：\(reason)")
         if !fromWatchdog {
