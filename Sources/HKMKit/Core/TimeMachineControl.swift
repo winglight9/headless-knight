@@ -15,7 +15,12 @@ public struct TimeMachineControl: Sendable {
     }
 
     /// nil when the preference cannot be read.
-    public func isEnabled() -> Bool? {
+    public func isEnabled() async -> Bool? {
+        await offMain { self.isEnabledSync() }
+    }
+
+    /// `defaults` + `tmutil` 都是同步子进程，界面路径走 async 版本。
+    public func isEnabledSync() -> Bool? {
         if let explicit = readAutoBackup() {
             return explicit
         }
@@ -68,7 +73,7 @@ public struct TimeMachineControl: Sendable {
 
     /// 没开备份、或读不出状态，就什么都不做——跳过不是失败。
     public func disable() async -> PauseOutcome {
-        guard isEnabled() == true else {
+        guard await isEnabled() == true else {
             return PauseOutcome(didDisable: false)
         }
         do {

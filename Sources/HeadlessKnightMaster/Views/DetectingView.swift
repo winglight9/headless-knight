@@ -1,30 +1,35 @@
 import HKMKit
 import SwiftUI
 
+/// 检测到「有人在挡睡眠」之后的那一页。
+///
+/// 以前这里是一个 20 秒倒计时，数完就自己动手。用户的原话是「20 秒还是有点
+/// 吓人」——一个会自己关掉你程序的界面，等多久都吓人，而且数着数还没看完就得
+/// 做决定。现在没有倒计时了，只剩一个明确的动作：一键全关。
+///
+/// 用户也可以自己动手关。他不需要回来点任何「我关好了」——关没关掉机器自己
+/// 查得出来，清单会实时变短，全空了自动往下走。
 struct DetectingView: View {
     @EnvironmentObject private var state: AppState
 
     private var title: String {
-        if state.blockers.isEmpty {
-            return "没有程序在阻止睡眠"
-        }
-        return "检测到 \(state.blockers.count) 个程序"
-    }
-
-    private var subtitle: String {
-        state.blockers.isEmpty ? "可以直接开始" : "它们在阻止电脑睡眠"
+        state.blockers.isEmpty
+            ? "没有程序在阻止睡眠"
+            : "\(state.blockers.count) 个程序在挡睡眠"
     }
 
     var body: some View {
-        PopupScaffold(dot: Theme.amber, title: "无头骑士大师") {
+        PopupScaffold(status: .preparing, title: "无头骑士大师") {
             VStack(spacing: 0) {
-                VStack(spacing: 6) {
+                VStack(spacing: 5) {
                     Text(title)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    NoteText(text: subtitle)
+                    if let note = sideNote {
+                        NoteText(text: note, alignment: .center)
+                    }
                 }
-                .padding(.top, 24)
+                .padding(.top, 22)
 
                 if !state.blockers.isEmpty {
                     VStack(spacing: 0) {
@@ -41,65 +46,61 @@ struct DetectingView: View {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .stroke(Theme.listBorder, lineWidth: 0.5)
                     )
-                    .padding(.top, 16)
+                    .padding(.top, 15)
 
                     if state.blockers.count > 4 {
-                        TinyText(text: "另有 \(state.blockers.count - 4) 个程序会一起退出")
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        NoteText(text: "另有 \(state.blockers.count - 4) 个会一起关掉", alignment: .center)
                             .padding(.top, 8)
                     }
                 }
 
-                if state.displayOnlyCount > 0 {
-                    TinyText(text: "另有 \(state.displayOnlyCount) 个只让屏幕不灭，不会退出")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 8)
-                }
+                chooseSection
 
-                if state.systemBlockerCount > 0 {
-                    TinyText(text: "还有 \(state.systemBlockerCount) 个系统进程会自己退出")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 6)
-                }
-
-                HStack(spacing: 6) {
-                    Text("\(state.countdownTotal) 秒后自动退出")
+                Button(action: { state.cancelDetecting() }) {
+                    Text("取消，先不出门")
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.secondaryInk)
-                    Spacer(minLength: 6)
-                    // 等宽数字：倒计时每秒变一次，比例数字会让整行左右抖。
-                    Text("\(state.countdown)")
-                        .font(.system(size: 17, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.ink)
+                        .foregroundStyle(Theme.tertiaryInk)
                 }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 9)
-                .background(Theme.fieldBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .padding(.top, 16)
-
-                HStack(spacing: 8) {
-                    PopupButton(title: "现在就退出") {
-                        state.closeImmediately()
-                    }
-                    PopupButton(title: "取消", style: .ghost) {
-                        state.cancelDetecting()
-                    }
-                }
+                .buttonStyle(.plain)
                 .padding(.top, 12)
-
-                TinyText(text: "退出后可能丢失未保存的内容", alignment: .center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 12)
             }
         }
     }
 
+    /// 标题下面那一行。只讲「清单为什么只有这几个」，不重复标题说过的意思。
+    private var sideNote: String? {
+        var parts: [String] = []
+        if state.displayOnlyCount > 0 {
+            parts.append("另有 \(state.displayOnlyCount) 个只让屏幕不灭，不会动它们")
+        }
+        if state.systemBlockerCount > 0 {
+            parts.append("\(state.systemBlockerCount) 个系统进程会自己退出")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "；")
+    }
+
+    private var chooseSection: some View {
+        VStack(spacing: 9) {
+            Text("手动关掉它们，或者点下面一键关闭")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+            PopupButton(title: "一键全部关闭", isEnabled: !state.isBusy) {
+                state.closeImmediately()
+            }
+            Text("会直接退出这些程序，没保存的会丢")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondaryInk)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 16)
+    }
+
     /// 一行一个程序：左边名字，右边「它挡住了什么」，下面一行「怎么处理」。
-    ///
-    /// 以前右边只写「已持续 50 小时」——用户看得出来它挡了很久，却不知道挡的是
-    /// 睡眠还是屏幕，也不知道该去关哪儿。理由比时长有用得多。
     private func blockerRow(_ blocker: SleepBlocker) -> some View {
         let explanation = blocker.explanation
         return VStack(alignment: .leading, spacing: 3) {
@@ -139,5 +140,24 @@ struct DetectingView: View {
             return Theme.red
         }
         return Theme.grayDot
+    }
+}
+
+/// 正在扫描断言。`pmset -g assertions` 加每个进程一次 `ps`，几百毫秒，
+/// 这段时间要有个看得见的东西，否则用户以为按钮没反应。
+struct ScanningView: View {
+    @EnvironmentObject private var state: AppState
+
+    var body: some View {
+        PopupScaffold(status: .working, title: "无头骑士大师") {
+            VStack(spacing: 11) {
+                ProgressView()
+                    .controlSize(.small)
+                NoteText(text: "正在检查谁在挡着睡眠…", alignment: .center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 40)
+            .padding(.bottom, 40)
+        }
     }
 }

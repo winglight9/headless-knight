@@ -135,9 +135,10 @@ private func displayOnlyPlayer() -> SleepBlocker {
 @Suite(.serialized)
 @MainActor
 struct DetectCountdownTests {
-    @Test("检测页默认等 20 秒")
-    func defaultIsTwentySeconds() {
-        #expect(Timing().detectCountdownSeconds == 20)
+    @Test("检测页不再自动倒计时：必须由用户点")
+    func detectPageDoesNotCountDown() {
+        // 20 秒倒计时已经删掉了。这里留一条断言，防止有人「好心」把它加回来。
+        #expect(Timing().strongModeCountdownSeconds > 0)
     }
 
     @Test("只挡屏幕的程序不退出，页面上单独说明")

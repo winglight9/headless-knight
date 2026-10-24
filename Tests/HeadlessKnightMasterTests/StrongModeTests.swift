@@ -43,7 +43,6 @@ private func makeStrongHarness(
     let state = AppState(
         deps: .simulated(sim),
         timing: Timing(
-            detectCountdownSeconds: 1,
             countdownTick: 0.01,
             sleepVerifySeconds: 0,
             unplugPollSeconds: 3600,
@@ -53,7 +52,8 @@ private func makeStrongHarness(
             // 后台那一拍不要来捣乱，测试自己拨时钟、自己调 tick。
             strongModeTickSeconds: 3600,
             sleepGapSeconds: 60
-        )
+        ),
+        autoAdvanceDetect: true
     )
     state.bootstrap()
     return (sim, state)
@@ -151,6 +151,8 @@ struct StrongModeTests {
         sim.remoteLoginsValue = ["alice  ttys001  Oct 24 09:20 (10.0.0.5)"]
         for _ in 0..<8 { tick(sim, state, seconds: 30) }
 
+        // 远程登录是后台查的，等它回来。
+        await waitFor { sim.notifications.contains { $0.hasPrefix("没有强制睡眠") } }
         #expect(sim.sleepNowCalls == 1)
         let warnings = sim.notifications.filter { $0.hasPrefix("没有强制睡眠") }
         #expect(warnings.count == 1)

@@ -51,7 +51,6 @@ enum Simulation {
         let state = AppState(
             deps: .simulated(sim),
             timing: Timing(
-                detectCountdownSeconds: 1,
                 countdownTick: 0.01,
                 sleepVerifySeconds: 0,
                 unplugPollSeconds: 3600,
@@ -62,7 +61,17 @@ enum Simulation {
 
         state.bootstrap()
         state.beginAway()
-        await waitUntil { state.screen != .detecting }
+        await waitUntil {
+            switch state.screen {
+            case .detecting, .closing, .readyToUnplug, .blocked: return true
+            default: return false
+            }
+        }
+        if state.screen == .detecting {
+            print("模拟：检测页不再自动倒计时，这里替用户点「一键全部关闭」")
+            state.closeImmediately()
+        }
+        await waitUntil { state.screen != .closing && !state.isBusy }
         await state.waitForFlow()
 
         print(String(repeating: "─", count: 56))
@@ -176,7 +185,9 @@ enum Simulation {
         switch screen {
         case let .onboarding(step): return "onboarding(\(step))"
         case .home: return "home"
+        case .scanning: return "scanning"
         case .detecting: return "detecting"
+        case .closing: return "closing"
         case .blocked: return "blocked"
         case .readyToUnplug: return "readyToUnplug"
         case .away: return "away"

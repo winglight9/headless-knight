@@ -35,7 +35,12 @@ public struct SharingControl: Sendable {
     ///
     /// 端口在监听，就是「外面能连进来」，这正是我们要判断的事；没监听就一个字节
     /// 都不该动它。
-    public func listeningLabels() -> [String] {
+    public func listeningLabels() async -> [String] {
+        await offMain { self.listeningLabelsSync() }
+    }
+
+    /// `netstat -an -p tcp` 要几十毫秒，界面路径走 async 版本。
+    public func listeningLabelsSync() -> [String] {
         let ports = listeningPorts()
         return SharingControl.labels.filter { label in
             guard let port = SharingControl.ports[label] else { return false }
@@ -69,7 +74,8 @@ public struct SharingControl: Sendable {
 
     /// 只关当前真的在监听的；本来就没开的，一个字节都不碰。
     public func disableAll() async -> [FailedItem] {
-        let enabled = Set(listeningLabels())
+        // 这一步要跑 netstat，放到后台去查，别卡主线程。
+        let enabled = Set(await listeningLabels())
         var failures: [FailedItem] = []
         for label in SharingControl.labels where enabled.contains(label) {
             do {

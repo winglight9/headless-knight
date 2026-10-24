@@ -31,12 +31,13 @@ private func makeHarness(
     let state = AppState(
         deps: .simulated(sim),
         timing: Timing(
-            detectCountdownSeconds: 1,
             countdownTick: 0.01,
             sleepVerifySeconds: 0,
             unplugPollSeconds: 3600,
             sleepRetrySeconds: sleepRetrySeconds
-        )
+        ),
+        // 检测页不再自动倒计时，测试里替用户点「一键关闭」。
+        autoAdvanceDetect: true
     )
     state.bootstrap()
     return (sim, state)

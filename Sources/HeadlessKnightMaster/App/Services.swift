@@ -10,7 +10,9 @@ import HKMKit
 
 @MainActor
 protocol ProcessScanning {
-    func scan() throws -> BlockerScanResult
+    /// 必须 async：`pmset -g assertions` 加每个进程一次 `ps`，几百毫秒起。
+    /// 同步版本会把主线程卡住，用户看到的就是「鼠标一顿一顿的」。
+    func scan() async throws -> BlockerScanResult
 }
 
 @MainActor
@@ -21,6 +23,8 @@ protocol ProcessKilling {
 @MainActor
 protocol PowerControlling {
     func readSnapshot() throws -> PmsetSnapshot
+    /// 出门流程里读快照用这个：主线程上读一次要卡一两百毫秒。
+    func readSnapshotAsync() async throws -> PmsetSnapshot
     func scheduledWakes() -> [String]
     func applyAwaySettings(current: PmsetSnapshot?, cancelScheduledWakes: Bool) async -> [FailedItem]
     func restore(_ snapshot: PmsetSnapshot) async -> [FailedItem]
@@ -33,7 +37,7 @@ protocol PowerControlling {
 
 @MainActor
 protocol BluetoothControlling {
-    func powerState() -> Int?
+    func powerState() async -> Int?
     /// 返回失败原因，nil 表示成功。
     func setPower(_ on: Bool) async -> String?
 }
@@ -46,14 +50,14 @@ protocol BatteryReading {
 @MainActor
 protocol SharingControlling {
     /// 真的在监听端口的服务。判断「开着没有」看它，不看 launchctl 的开关记录。
-    func listeningLabels() -> [String]
+    func listeningLabels() async -> [String]
     func disableAll() async -> [FailedItem]
     func restore(_ labels: [String]) async -> [FailedItem]
 }
 
 @MainActor
 protocol TimeMachineControlling {
-    func isEnabled() -> Bool?
+    func isEnabled() async -> Bool?
     func disable() async -> TimeMachineControl.PauseOutcome
     func enable() async -> FailedItem?
 }
@@ -119,7 +123,7 @@ protocol HelperManaging {
 /// 强制睡眠前先确认没人在远程用这台机器。
 @MainActor
 protocol RemoteSessionChecking {
-    func remoteLogins() -> [String]
+    func remoteLogins() async -> [String]
 }
 
 @MainActor
@@ -237,14 +241,14 @@ struct AppDependencies {
     }
 }
 
-/// 倒计时节奏。测试里把 tick 调到很小，就不用真的等 20 秒。
+/// 倒计时节奏。测试里把 tick 调到很小，就不用真的等。
 struct Timing {
-    /// 「这些程序在挡睡眠」到「自动退出它们」之间留多久。
-    ///
-    /// 10 秒不够：用户得先看清是哪个程序、挡了什么，再决定是自己关还是让软件关。
-    /// 20 秒刚好够读完两三条理由，又不至于让人对着一个不动的界面等。
-    var detectCountdownSeconds: Int = 20
     var countdownTick: Double = 1.0
+    /// 检测页上重扫「挡睡眠的程序还在不在」的间隔。
+    ///
+    /// 这一页不再让用户回来点「我关好了」，所以得自己盯着。1.5 秒是权衡：
+    /// 再快就是无意义的 `pmset -g assertions` 空转，再慢用户会以为它没反应。
+    var detectPollSeconds: Double = 1.5
     /// 请求睡眠后等多久再读日志确认。机器真睡了的话这段时间是在挂起中过去的。
     var sleepVerifySeconds: Double = 4.0
     /// 「可以拔线了」这一页的兜底轮询间隔。事件回调会漏，轮询不会。

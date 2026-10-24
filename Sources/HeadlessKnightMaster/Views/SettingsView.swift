@@ -4,7 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(dot: Theme.grayDot, title: "设置", onClose: { state.dismissSettings() }) {
+        PopupScaffold(status: .settings, title: "设置", onClose: { state.dismissSettings() }) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     SettingsRow {

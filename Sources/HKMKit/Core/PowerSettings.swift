@@ -84,6 +84,11 @@ public struct PowerSettings: Sendable {
         return snapshot
     }
 
+    /// 两次 `pmset` 调用，加起来一两百毫秒。出门流程里用它，别占着主线程。
+    public func readSnapshotAsync() async throws -> PmsetSnapshot {
+        try await offMainThrowing { try self.readSnapshot() }
+    }
+
     public func scheduledWakes() -> [String] {
         guard let result = try? runner.run("/usr/bin/pmset", arguments: ["-g", "sched"]), result.succeeded else {
             return []

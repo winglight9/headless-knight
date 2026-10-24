@@ -30,7 +30,13 @@ final class AwayHarness {
         self.sim = sim
         self.state = AppState(
             deps: .simulated(sim),
-            timing: Timing(detectCountdownSeconds: 1, countdownTick: 0.01, sleepVerifySeconds: 0, unplugPollSeconds: 3600, sleepRetrySeconds: 3600)
+            timing: Timing(
+                countdownTick: 0.01,
+                detectPollSeconds: 0.05,
+                sleepVerifySeconds: 0,
+                unplugPollSeconds: 3600,
+                sleepRetrySeconds: 3600
+            )
         )
         state.narrator = { [weak self] line in self?.lines.append(line) }
         state.bootstrap()
@@ -39,8 +45,23 @@ final class AwayHarness {
     /// 点「开始外出模式」，一路等到流程停稳（检测页 / 阻塞页 / 拔线页）。
     func enterAway() async {
         state.beginAway()
-        await AwayHarness.waitUntil { self.state.screen != .detecting && !self.state.isBusy }
+        await waitForDetectPage()
+        // 检测页现在停在那儿等人，这里替用户点「一键全部关闭」。
+        if state.screen == .detecting { state.closeImmediately() }
+        await AwayHarness.waitUntil {
+            self.state.screen != .detecting && self.state.screen != .closing && !self.state.isBusy
+        }
         await state.waitForFlow()
+    }
+
+    /// 等到「扫完了」：检测页 / 直接进流程 / 被拦住。
+    func waitForDetectPage() async {
+        await AwayHarness.waitUntil {
+            switch self.state.screen {
+            case .detecting, .closing, .readyToUnplug, .blocked: return true
+            default: return false
+            }
+        }
     }
 
     /// 拔掉显示器，等到系统睡眠请求发出去。
@@ -157,21 +178,58 @@ struct AwayFlowHappyPathTests {
         #expect(harness.state.screen == .readyToUnplug)
         #expect(harness.state.blockers.isEmpty)
         #expect(harness.lines.contains { $0.contains("跳过检测页") })
-        #expect(harness.state.completedActions.first == "没有程序在阻止睡眠")
+        #expect(harness.state.completedActions.contains("没有程序在阻止睡眠"))
     }
 
-    @Test("有程序阻止睡眠时走检测页，倒计时结束后自动继续")
-    func countdownFinishesAndContinues() async {
+    @Test("有程序阻止睡眠：停在检测页等用户点，绝不自己数着数动手")
+    func detectingWaitsForUser() async {
         let harness = AwayHarness { twoBlockers($0) }
         harness.state.beginAway()
-        #expect(harness.state.screen == .detecting)
-        #expect(harness.state.countdownTotal == 1)
+        await harness.waitForDetectPage()
 
-        await AwayHarness.waitUntil { harness.state.screen != .detecting }
+        #expect(harness.state.screen == .detecting)
+        // 没有任何倒计时在跑：这正是「20 秒有点吓人」那件事的修法。
+        #expect(harness.state.countdown == 0)
+        #expect(harness.state.countdownTotal == 0)
+
+        // 等一会儿，它必须还停在这一页。
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        #expect(harness.state.screen == .detecting)
+        #expect(harness.sim.pmsetWrites.isEmpty)
+        #expect(harness.sim.events.filter { $0.hasPrefix("kill ") }.isEmpty)
+
+        harness.state.closeImmediately()
+        await AwayHarness.waitUntil { harness.state.screen == .readyToUnplug }
         await harness.state.waitForFlow()
 
         #expect(harness.state.screen == .readyToUnplug)
         #expect(harness.lines.contains { $0.contains("[1/8] 扫描断言… 发现 2 个") })
+    }
+
+    @Test("检测页自己关程序：不用回来点任何按钮，关干净了自动往下走")
+    func manualCloseAdvancesAutomatically() async {
+        let harness = AwayHarness { twoBlockers($0) }
+        harness.state.beginAway()
+        await harness.waitForDetectPage()
+
+        // 用户还没动手：几轮重扫之后必须还停在原地，一步都没往下做。
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        #expect(harness.state.screen == .detecting)
+        #expect(harness.state.blockers.count == 2)
+        #expect(harness.sim.pmsetWrites.isEmpty)
+
+        // 用户自己退掉了一个：清单跟着变短，但仍不许往下走。
+        harness.sim.blockers = Array(harness.sim.blockers.dropFirst())
+        await AwayHarness.waitUntil { harness.state.blockers.count == 1 }
+        #expect(harness.state.blockers.count == 1)
+        #expect(harness.state.screen == .detecting)
+
+        // 全关掉了：不用点任何东西，自己往下走。
+        harness.sim.blockers = []
+        await AwayHarness.waitUntil { harness.state.screen == .readyToUnplug }
+        await harness.state.waitForFlow()
+        #expect(harness.state.screen == .readyToUnplug)
+        #expect(harness.lines.contains { $0.contains("挡睡眠的程序都没了，自动往下走") })
     }
 }
 
@@ -491,7 +549,9 @@ struct AwayFlowCancelTests {
     func cancelDuringDetectingWritesNothing() async {
         let harness = AwayHarness { twoBlockers($0) }
         harness.state.beginAway()
+        await harness.waitForDetectPage()
         #expect(harness.state.screen == .detecting)
+        #expect(harness.state.blockers.count == 2)
 
         harness.state.cancelDetecting()
 
@@ -507,6 +567,7 @@ struct AwayFlowCancelTests {
     func closeImmediatelyStartsSequence() async {
         let harness = AwayHarness { twoBlockers($0) }
         harness.state.beginAway()
+        await harness.waitForDetectPage()
         #expect(harness.state.screen == .detecting)
 
         harness.state.closeImmediately()
@@ -524,7 +585,11 @@ struct AwayFlowCancelTests {
         harness.state.beginAway()
         harness.state.beginAway()
 
-        await AwayHarness.waitUntil { harness.state.screen != .detecting && !harness.state.isBusy }
+        await harness.waitForDetectPage()
+        if harness.state.screen == .detecting { harness.state.closeImmediately() }
+        await AwayHarness.waitUntil {
+            harness.state.screen != .detecting && harness.state.screen != .closing && !harness.state.isBusy
+        }
         await harness.state.waitForFlow()
 
         // 每个程序只该被关一次；两条流程会变成四次。

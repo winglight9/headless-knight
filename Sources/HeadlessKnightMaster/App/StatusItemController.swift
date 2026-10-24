@@ -26,6 +26,11 @@ final class StatusItemController: NSObject {
             .sink { [weak self] _ in self?.refreshIcon() }
             .store(in: &cancellables)
 
+        // 机器被叫醒时把窗口摆出来：那一刻用户最想看到的是「结束外出模式」。
+        state.onSystemWake = { [weak self] in
+            self?.showForWake()
+        }
+
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceChanged),
@@ -42,10 +47,21 @@ final class StatusItemController: NSObject {
     @objc private func handleClick() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            popover.hide()
+            // 流程进行中时点图标不是「关掉窗口」——用户要的是「一直看着」。
+            if popover.isStickyScreen {
+                popover.bringToFront()
+            } else {
+                popover.hide()
+            }
             return
         }
         state.handleIconTap()
+        popover.show(relativeTo: button)
+    }
+
+    /// 系统唤醒时调用：把「外出中」那一页摆出来。
+    private func showForWake() {
+        guard let button = statusItem.button, !popover.isShown else { return }
         popover.show(relativeTo: button)
     }
 

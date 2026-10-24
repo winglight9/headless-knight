@@ -76,7 +76,7 @@ struct TimeMachinePreconditionTests {
         let executor = RecordingExecutor()
         let control = TimeMachineControl(runner: noDestinationRunner, executor: executor)
 
-        #expect(control.isEnabled() == false)
+        #expect(await control.isEnabled() == false)
 
         let outcome = await control.disable()
 
@@ -101,7 +101,7 @@ struct TimeMachinePreconditionTests {
         let executor = RecordingExecutor()
         let control = TimeMachineControl(runner: backupEnabledRunner, executor: executor)
 
-        #expect(control.isEnabled() == true)
+        #expect(await control.isEnabled() == true)
 
         let outcome = await control.disable()
 
@@ -253,7 +253,7 @@ struct SharingPreconditionTests {
         let executor = RecordingExecutor()
         let control = SharingControl(runner: runner, executor: executor)
 
-        #expect(control.listeningLabels().isEmpty)
+        #expect(await control.listeningLabels().isEmpty)
 
         let failures = await control.disableAll()
 
@@ -273,7 +273,7 @@ struct SharingPreconditionTests {
         let executor = RecordingExecutor()
         let control = SharingControl(runner: runner, executor: executor)
 
-        #expect(control.listeningLabels() == ["com.apple.screensharing"])
+        #expect(await control.listeningLabels() == ["com.apple.screensharing"])
 
         _ = await control.disableAll()
         #expect(executor.calls.count == 2)   // disable + bootout，只针对一个 label

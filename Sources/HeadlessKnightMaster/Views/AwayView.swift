@@ -26,7 +26,7 @@ struct AwayView: View {
     }
 
     var body: some View {
-        PopupScaffold(dot: Theme.amber, title: "无头骑士大师", onGear: { state.showSettings() }) {
+        PopupScaffold(status: .away, title: "无头骑士大师", onGear: { state.showSettings() }) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Text("外出中")
@@ -81,7 +81,7 @@ struct AwayView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.red)
             }
-            Text("机器已经醒着 \(state.awakeMinutesText)，没人在的话它会一直烧电。")
+            Text("机器已经醒着 \(state.awakeMinutesText)，没人在的话它会一直烧电")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +105,7 @@ struct AwayView: View {
 
 struct AuditingView: View {
     var body: some View {
-        PopupScaffold(dot: Theme.amber, title: "无头骑士大师") {
+        PopupScaffold(status: .auditing, title: "无头骑士大师") {
             VStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)

@@ -6,7 +6,7 @@ struct CleanReportView: View {
     let report: Report
 
     var body: some View {
-        PopupScaffold(dot: Theme.green, title: "无头骑士大师") {
+        PopupScaffold(status: .done, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Text(report.headline)
@@ -59,7 +59,7 @@ struct AnomalyReportView: View {
     let report: Report
 
     var body: some View {
-        PopupScaffold(dot: Theme.red, title: "无头骑士大师") {
+        PopupScaffold(status: .attention, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Text(report.headline)

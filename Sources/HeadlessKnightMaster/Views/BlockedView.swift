@@ -11,7 +11,7 @@ struct BlockedView: View {
     }
 
     var body: some View {
-        PopupScaffold(dot: Theme.amber, title: "无头骑士大师") {
+        PopupScaffold(status: .attention, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
                     Text("有 \(state.criticalFailures.count) 项没能完成")
@@ -45,7 +45,7 @@ struct BlockedView: View {
                 // 蓝牙关不掉是唯一「用户自己能立刻解决」的关键项：
                 // 要么给权限，要么在控制中心手动关掉。给个出口，别让他干瞪眼。
                 if state.bluetoothFailure != nil {
-                    TinyText(text: "蓝牙也可以在控制中心手动关掉，关完点「我处理好了」。")
+                    TinyText(text: "蓝牙也可以在控制中心手动关掉，关完点「我处理好了」")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
 

@@ -116,7 +116,13 @@ public struct AssertionScanner: Sendable {
         return result.stdout
     }
 
-    public func scan() throws -> BlockerScanResult {
+    public func scan() async throws -> BlockerScanResult {
+        try await offMainThrowing { try self.scanSync() }
+    }
+
+    /// 同步扫一遍。`pmset -g assertions` 加每个进程一次 `ps`，几百毫秒起，
+    /// 只能在没有界面的时候用（`--diagnose`），界面路径一律走 `scan()`。
+    public func scanSync() throws -> BlockerScanResult {
         let text = try readAssertions()
         let scan = AssertionScanner.parse(text)
         return blockers(from: scan)

@@ -23,7 +23,10 @@ public struct HelperExecutor: PrivilegedExecuting {
 
     public func perform(_ operation: HelperOperation, arguments: [String: String] = [:]) async throws -> HelperResponse {
         let request = HelperRequest(operation: operation, arguments: arguments)
-        let response = try client.send(request)
+        // `send` 是同步的 unix socket 往返，连不上时要等满超时（交互路径 8 秒）。
+        // 留在主线程上就是「点一下，鼠标卡住」。
+        let client = self.client
+        let response = try await offMainThrowing { try client.send(request) }
         guard response.ok else {
             throw HelperError.remote(response.errorMessage ?? "未知错误")
         }

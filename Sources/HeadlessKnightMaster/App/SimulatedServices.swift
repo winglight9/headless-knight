@@ -130,7 +130,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     // MARK: - ProcessScanning
 
-    func scan() throws -> BlockerScanResult {
+    func scan() async throws -> BlockerScanResult {
         BlockerScanResult(
             blockers: blockers,
             systemEntries: Array(repeating: systemPlaceholder, count: systemBlockerCount)
@@ -166,6 +166,10 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     // MARK: - PowerControlling
 
     func readSnapshot() throws -> PmsetSnapshot {
+        pmsetValues
+    }
+
+    func readSnapshotAsync() async throws -> PmsetSnapshot {
         pmsetValues
     }
 
@@ -247,7 +251,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     // MARK: - BluetoothControlling
 
-    func powerState() -> Int? {
+    func powerState() async -> Int? {
         bluetoothState
     }
 
@@ -268,7 +272,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     // MARK: - SharingControlling
 
-    func listeningLabels() -> [String] {
+    func listeningLabels() async -> [String] {
         sharingLabels
     }
 
@@ -297,7 +301,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     // MARK: - TimeMachineControlling
 
-    func isEnabled() -> Bool? {
+    func isEnabled() async -> Bool? {
         timeMachineIsOn
     }
 
@@ -361,7 +365,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
         mainID
     }
 
-    func remoteLogins() -> [String] {
+    func remoteLogins() async -> [String] {
         remoteLoginsValue
     }
 

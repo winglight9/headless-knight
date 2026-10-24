@@ -8,6 +8,12 @@ struct RootView: View {
         content
             .frame(width: Theme.width)
             .background(Theme.surface)
+            // 窗口本身是无边框的透明面板，圆角和描边只能由内容自己画。
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Theme.listBorder, lineWidth: 0.5)
+            )
             .alert(
                 "没能完成",
                 isPresented: Binding(
@@ -34,8 +40,12 @@ struct RootView: View {
             }
         case .home:
             HomeView()
+        case .scanning:
+            ScanningView()
         case .detecting:
             DetectingView()
+        case .closing:
+            ClosingView()
         case .blocked:
             BlockedView()
         case .readyToUnplug:

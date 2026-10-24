@@ -9,7 +9,7 @@ enum Diagnostics {
         let scanner = AssertionScanner()
         print("== 阻止睡眠的断言 ==")
         do {
-            let result = try scanner.scan()
+            let result = try scanner.scanSync()
             if result.blockers.isEmpty {
                 print("  （没有需要关闭的程序）")
             }
@@ -48,7 +48,7 @@ enum Diagnostics {
         print("\n== 强力模式 / 远程登录 ==")
         let settings = SessionStore().loadSettings()
         print("  强力模式：\(settings.strongMode ? "开（醒着满 10 分钟强制睡眠）" : "关")")
-        let remote = RemoteSessionProbe().remoteLogins()
+        let remote = RemoteSessionProbe().remoteLoginsSync()
         print(remote.isEmpty ? "  远程登录：没有" : "  远程登录：\(remote.joined(separator: "；"))")
 
         print("\n== 蓝牙 ==")
@@ -56,7 +56,7 @@ enum Diagnostics {
         print("  私有 API 符号存在：\(bluetooth.hasPrivateAPI)")
         print("  蓝牙权限：\(bluetoothPermissionText())")
         print("  ※ 没有权限就调私有 API，进程会被 TCC 直接 abort，所以那条路只在有权限时才走")
-        print("  实际读到的状态：\(bluetooth.powerState().map { $0 == 1 ? "开" : "关" } ?? "未知")")
+        print("  实际读到的状态：\(bluetooth.powerStateSync().map { $0 == 1 ? "开" : "关" } ?? "未知")")
         print("  后台服务读到的状态：\(bluetooth.powerStateViaHelper().map { $0 == 1 ? "开" : "关" } ?? "未知")")
         print("  偏好文件读到的状态：\(bluetooth.powerStateViaDefaults().map(String.init) ?? "未知")")
         print("  system_profiler 读到的状态：\(bluetooth.powerStateViaSystemProfiler().map { $0 == 1 ? "开" : "关" } ?? "未知")")
@@ -75,9 +75,9 @@ enum Diagnostics {
         print("\n== 电量 / 显示器 / 共享 / TM ==")
         print("  电量：\(BatteryReader().percentage().map { "\($0)%" } ?? "未知")")
         print("  活动显示器：\(SystemInfo.displayCount())")
-        let listening = SharingControl().listeningLabels()
+        let listening = SharingControl().listeningLabelsSync()
         print("  正在监听的共享服务：\(listening.isEmpty ? "（没有，出门时不会动它们）" : listening.joined(separator: "、"))")
-        print("  Time Machine：\(TimeMachineControl().isEnabled().map { $0 ? "开" : "关" } ?? "未知")")
+        print("  Time Machine：\(TimeMachineControl().isEnabledSync().map { $0 ? "开" : "关" } ?? "未知")")
         print("  helper 已安装：\(HelperClient().isInstalled)，可连接：\(HelperClient().isReachable())")
 
         print("\n== 唤醒审计 ==")

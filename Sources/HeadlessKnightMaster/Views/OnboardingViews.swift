@@ -4,7 +4,7 @@ struct OnboardingOneView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(dot: Theme.grayDot, title: "无头骑士大师") {
+        PopupScaffold(status: .firstRun, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     SuitcaseGlyph(size: 38)
@@ -46,7 +46,7 @@ struct OnboardingTwoView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(dot: Theme.grayDot, title: "无头骑士大师") {
+        PopupScaffold(status: .firstRun, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     LockGlyph(size: 36)
@@ -56,7 +56,7 @@ struct OnboardingTwoView: View {
                         .foregroundStyle(Theme.ink)
                         .padding(.top, 12)
                     NoteText(
-                        text: "修改系统睡眠设置\n需要管理员权限。\n\n授权后不再重复询问。",
+                        text: "修改系统睡眠设置\n需要管理员权限。\n\n授权后不再重复询问",
                         alignment: .center,
                         lineSpacing: 3
                     )
@@ -66,7 +66,7 @@ struct OnboardingTwoView: View {
 
                 if state.showAuthorizationReason {
                     WarningBox {
-                        Text("睡眠设置、定时唤醒和共享服务都在系统域里，只有 root 能改。装一个最小的后台服务，App 通过它执行这些命令，你的密码只在安装时输入一次。")
+                        Text("睡眠设置、定时唤醒和共享服务都在系统域里，只有 root 能改。装一个最小的后台服务，App 通过它执行这些命令，你的密码只在安装时输入一次")
                             .font(.system(size: 10.5))
                             .foregroundStyle(Theme.warningText)
                             .lineSpacing(3)
@@ -96,7 +96,7 @@ struct OnboardingThreeView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(dot: Theme.grayDot, title: "无头骑士大师") {
+        PopupScaffold(status: .firstRun, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 Text("出门时会做这些")
                     .font(.system(size: 14, weight: .medium))

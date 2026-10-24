@@ -19,7 +19,7 @@ struct ReadyToUnplugView: View {
     }
 
     var body: some View {
-        PopupScaffold(dot: sleepFailureReason == nil ? Theme.green : Theme.amber, title: "无头骑士大师") {
+        PopupScaffold(status: sleepFailureReason == nil ? .ready : .attention, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     if sleepFailureReason == nil {
@@ -69,7 +69,7 @@ struct ReadyToUnplugView: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.ink)
                                 .lineSpacing(2)
-                            Text("会自动重试，插回显示器就停。也可以现在再试一次。")
+                            Text("会自动重试，插回显示器就停。也可以现在再试一次")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .lineSpacing(2)

@@ -4,7 +4,11 @@ struct HomeView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(dot: state.sleepDisabled ? Theme.amber : Theme.green, title: "无头骑士大师", onGear: { state.showSettings() }) {
+        PopupScaffold(
+            status: state.sleepDisabled ? StatusTag(text: "睡眠被锁", color: Theme.amber) : .home,
+            title: "无头骑士大师",
+            onGear: { state.showSettings() }
+        ) {
             VStack(spacing: 0) {
                 VStack(spacing: 5) {
                     Text("在家")
@@ -23,7 +27,7 @@ struct HomeView: View {
                             Text("上次没能恢复原设置")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Theme.ink)
-                            Text("睡眠设置还停留在外出状态。先恢复，再出门。")
+                            Text("睡眠设置还停留在外出状态，先恢复，再出门")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .lineSpacing(2)

@@ -17,7 +17,12 @@ public struct RemoteSessionProbe: Sendable {
         self.runner = runner
     }
 
-    public func remoteLogins() -> [String] {
+    public func remoteLogins() async -> [String] {
+        await offMain { self.remoteLoginsSync() }
+    }
+
+    /// 同步版本只给命令行诊断用。强力模式每 5 秒查一次，绝不能放在主线程上。
+    public func remoteLoginsSync() -> [String] {
         guard let result = try? runner.run("/usr/bin/who", arguments: [], timeout: 5),
               result.succeeded
         else { return [] }

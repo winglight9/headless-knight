@@ -84,7 +84,14 @@ public struct BluetoothControl: Sendable {
     /// 1 = on, 0 = off, nil = unknown.
     ///
     /// `system_profiler` 排第一：它是唯一不受我们自己的写入影响的读数。
-    public func powerState() -> Int? {
+    /// 它也是最慢的一步（0.5～2.5 秒），所以对外只暴露 `async` 版本。
+    public func powerState() async -> Int? {
+        await offMain { self.powerStateSync() }
+    }
+
+    /// 同步读法。只给 `--diagnose` 这类本来就该慢的命令行路径用；
+    /// 界面上的任何一次读取都必须走 `powerState()`。
+    public func powerStateSync() -> Int? {
         if let state = powerStateViaSystemProfiler() {
             return state
         }
@@ -157,7 +164,7 @@ public struct BluetoothControl: Sendable {
             return nil
         }
 
-        let before = powerStateViaSystemProfiler()
+        let before = await offMain { self.powerStateViaSystemProfiler() }
         if before == target {
             HKMLog.info("蓝牙已经是\(on ? "开" : "关")的状态，不需要改动")
             return nil
@@ -204,12 +211,12 @@ public struct BluetoothControl: Sendable {
     /// 「成功」。
     private func waitForState(_ expected: Int) async -> Bool {
         for attempt in 0..<6 {
-            if powerStateViaSystemProfiler() == expected { return true }
+            if await offMain({ self.powerStateViaSystemProfiler() }) == expected { return true }
             if attempt < 5 {
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
-        return powerStateViaSystemProfiler() == expected
+        return await offMain { self.powerStateViaSystemProfiler() } == expected
     }
 }
 

@@ -13,7 +13,11 @@ public final class AppState: ObservableObject {
     public enum Screen: Equatable {
         case onboarding(Int)
         case home
+        /// 正在扫「谁在挡睡眠」。`pmset -g assertions` 要几百毫秒，不能同步等。
+        case scanning
         case detecting
+        /// 正在自动关闭。这一页会一直显示到最后一步，用户能看见进度。
+        case closing
         case blocked
         case readyToUnplug
         case away
@@ -22,6 +26,11 @@ public final class AppState: ObservableObject {
         case settings
     }
 
+    /// 检测页上的两种选择。
+    ///
+    /// 以前这里是一个 20 秒倒计时：数完就自己动手。用户的原话是「20 秒还是有点
+    /// 吓人」——一个会自己动手关掉你程序的界面，等多久都吓人。现在改成必须点：
+    /// 一键全关，或者自己关。
     public enum IconState: Equatable {
         case home
         case away
@@ -51,6 +60,8 @@ public final class AppState: ObservableObject {
     @Published public private(set) var displayOnlyCount: Int = 0
     @Published public private(set) var countdown: Int = 0
     @Published public private(set) var countdownTotal: Int = 0
+    /// 正在自动关闭时的当前一步。关完变 nil。
+    @Published public private(set) var closingStep: String?
     @Published public private(set) var unplugCountdown: Int?
     @Published public private(set) var failedItems: [FailedItem] = []
     @Published public private(set) var completedActions: [String] = []
@@ -96,6 +107,9 @@ public final class AppState: ObservableObject {
     var terminateApplication: @MainActor () -> Void = { NSApp.terminate(nil) }
 
     private var countdownTask: Task<Void, Never>?
+    private var scanTask: Task<Void, Never>?
+    /// 检测页上盯着「挡睡眠的程序还在不在」。用户自己去关也行，关干净了自动往下走。
+    private var blockerWatchTask: Task<Void, Never>?
     private var tickerTask: Task<Void, Never>?
     private var flowTask: Task<Void, Never>?
     private var unplugPollTask: Task<Void, Never>?
@@ -134,6 +148,8 @@ public final class AppState: ObservableObject {
     private var awakeAccumulated: Double = 0
     /// 远程登录的提醒只发一次，别每 10 分钟刷一遍。
     private var didWarnRemoteLogin = false
+    /// 正在后台问「有没有人远程登录」。防同一拍重复发起。
+    private var forcedSleepCheckInFlight = false
 
     // MARK: - 唤醒日志的预读
 
@@ -150,7 +166,6 @@ public final class AppState: ObservableObject {
 
     private enum CountdownPurpose {
         case none
-        case detecting
         case unplug
         /// 强力模式的「N 秒后强制睡眠」。
         case forceSleep
@@ -160,10 +175,17 @@ public final class AppState: ObservableObject {
         self.init(deps: AppDependencies.live(), timing: .real)
     }
 
-    init(deps: AppDependencies, timing: Timing = .real) {
+    /// `autoAdvanceDetect`：检测页上不等用户点，直接按「一键关闭」往下走。
+    ///
+    /// 只给测试和 `--simulate-away` 用。真机上这个页面必须停下来等人——这正是
+    /// 用户要的「别自己数 20 秒然后动手」。
+    init(deps: AppDependencies, timing: Timing = .real, autoAdvanceDetect: Bool = false) {
         self.deps = deps
         self.timing = timing
+        self.autoAdvanceDetect = autoAdvanceDetect
     }
+
+    private let autoAdvanceDetect: Bool
 
     // MARK: - Derived values
 
@@ -444,13 +466,22 @@ public final class AppState: ObservableObject {
         showDetail = false
         failedItems = []
         completedActions = []
+        closingStep = nil
         killedCount = 0
         needsHelperInstall = false
         scanIssue = nil
-        bluetoothWasOn = (deps.bluetooth.powerState() ?? 1) != 0
+        // 扫描要几百毫秒（`pmset -g assertions` + 每个进程一次 `ps`），
+        // 所以先切到「正在检查」，让界面立刻有反应，再把活干在后台。
+        screen = .scanning
+        scanTask = Task { await beginAwayNow() }
+    }
+
+    /// 扫一遍断言，然后决定是进检测页还是直接往下走。
+    private func beginAwayNow() async {
+        bluetoothWasOn = (await deps.bluetooth.powerState() ?? 1) != 0
 
         do {
-            let scan = try deps.scanner.scan()
+            let scan = try await deps.scanner.scan()
             blockers = actionableBlockers(from: scan)
             systemBlockerCount = scan.systemCount
         } catch {
@@ -464,7 +495,7 @@ public final class AppState: ObservableObject {
         }
         isBusy = false
 
-        // 没有程序在阻止睡眠就不必让用户对着空列表等 10 秒。
+        // 没有程序在阻止睡眠就不必让用户对着空列表做选择。
         guard !blockers.isEmpty else {
             narrate("[1/8] 扫描断言… 没有程序在阻止睡眠，跳过检测页")
             startAwaySequence()
@@ -476,50 +507,109 @@ public final class AppState: ObservableObject {
                 + (displayOnlyCount > 0 ? "（另有 \(displayOnlyCount) 个只挡屏幕，不退出）" : "")
         )
         screen = .detecting
-        startCountdown(seconds: timing.detectCountdownSeconds, purpose: .detecting) { [weak self] in
-            self?.startAwaySequence()
+        if autoAdvanceDetect {
+            closeImmediately()
+            return
         }
+        // 用户自己去关程序也行——软件自己看得见关没关干净，不需要他回来点任何按钮。
+        watchBlockers()
+    }
+
+    /// 在检测页上每隔一会儿重扫一遍。
+    ///
+    /// 以前这里要用户点「我关好了，继续」再重扫一次。可「关没关掉」这件事机器
+    /// 自己就能查，让用户回来汇报一遍纯属多余，而且他忘了点就卡在这一页。
+    private func watchBlockers() {
+        blockerWatchTask?.cancel()
+        blockerWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let interval = self.timing.detectPollSeconds
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard !Task.isCancelled, self.screen == .detecting, !self.isBusy else { return }
+                await self.recheckBlockers()
+            }
+        }
+    }
+
+    /// 重扫一遍：少了的从清单上抹掉，全空了就自动往下走。
+    private func recheckBlockers() async {
+        guard let scan = try? await deps.scanner.scan() else { return }
+        let left = actionableBlockers(from: scan)
+        systemBlockerCount = scan.systemCount
+        blockers = left
+        guard left.isEmpty else { return }
+        narrate("检测页：挡睡眠的程序都没了，自动往下走")
+        startAwaySequence()
     }
 
     public func cancelDetecting() {
         cancelCountdown()
+        blockerWatchTask?.cancel()
+        blockerWatchTask = nil
+        scanTask?.cancel()
+        scanTask = nil
         blockers = []
         systemBlockerCount = 0
         displayOnlyCount = 0
         scanIssue = nil
+        isBusy = false
         screen = .home
         iconState = .home
     }
 
     public func closeImmediately() {
         cancelCountdown()
+        blockerWatchTask?.cancel()
+        blockerWatchTask = nil
         startAwaySequence()
     }
 
     public func startAwaySequence() {
         cancelCountdown()
+        blockerWatchTask?.cancel()
+        blockerWatchTask = nil
         guard !isBusy else { return }
         // 同步置位，别等 Task 起来——否则连点两下会开两条流程。
         isBusy = true
+        closingStep = nil
+        // 关键：这一页要一直显示着，直到流程结束。以前 popover 会被系统收走，
+        // 用户根本看不到「正在自动关闭」，只看到鼠标卡了一下。
+        screen = .closing
         flowTask = Task { await performAwaySequence() }
     }
 
     /// 测试与 `--simulate-away` 用：等当前流程真正跑完。
     func waitForFlow() async {
+        await scanTask?.value
         await flowTask?.value
+    }
+
+    /// 把当前这一步挂到界面上。关闭页要能看见「正在关什么」，
+    /// 而不是盯着一个不动的窗口猜它是不是死了。
+    private func step(_ text: String) {
+        closingStep = text
+    }
+
+    private func done(_ text: String) {
+        completedActions.append(text)
+        closingStep = nil
     }
 
     /// 真正的外出流程。测试和 `--simulate-away` 直接 await 它。
     func performAwaySequence() async {
         isBusy = true
-        defer { isBusy = false }
+        defer {
+            isBusy = false
+            closingStep = nil
+        }
 
         // 重跑（比如刚装好后端服务）时不能重新拍快照：那会儿 pmset 已经被改过了，
         // 再拍一张就等于把「外出中」的状态当成用户的原始设置，恢复时会把机器留在
         // 一个睡不着的状态里。第一次进入才拍，其余字段也照抄。
         let resuming = session?.phase == .away
         let startedAt = resuming ? (session?.startedAt ?? deps.clock.now) : deps.clock.now
-        var snapshot = resuming ? (session?.snapshot ?? Snapshot()) : captureSnapshot()
+        var snapshot = resuming ? (session?.snapshot ?? Snapshot()) : await captureSnapshot()
 
         var state = SessionState(
             phase: .away,
@@ -535,71 +625,86 @@ public final class AppState: ObservableObject {
         )
 
         var failures: [FailedItem] = scanIssue.map { [$0] } ?? []
-        var actions: [String] = []
+        // 进度清单从零开始：这个流程可能因为装了后台服务而重跑一遍。
+        completedActions = []
 
         // L1 first: without this nothing else matters.
+        step("锁定睡眠设置")
         let powerFailures = await deps.power.applyAwaySettings(
             current: snapshot.pmset,
             cancelScheduledWakes: !snapshot.scheduledWake.isEmpty
         )
         failures += powerFailures
         if powerFailures.isEmpty {
-            actions.append("锁定了睡眠设置")
+            done("锁定了睡眠设置")
+        } else {
+            done("睡眠设置没写全")
         }
         narrate(describePowerStep(snapshot: snapshot.pmset, failures: powerFailures))
 
+        // TEMP-PREVIEW：本地截图核对时放慢，核对完删掉。
+        if FileManager.default.fileExists(atPath: "/tmp/hkm_slow") {
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+        }
+
+
         // Time Machine 是优化项：没开备份就直接跳过，没关成也不许阻断。
+        step("暂停 Time Machine")
         let timeMachineOutcome = await deps.timeMachine.disable()
         snapshot.timeMachineEnabled = timeMachineOutcome.didDisable
         if let failure = timeMachineOutcome.failure {
             failures.append(failure)
             narrate("[3/8] 暂停 Time Machine… ✗ \(failure.detail)")
         } else if timeMachineOutcome.didDisable {
+            done("暂停了 Time Machine")
             narrate("[3/8] 暂停 Time Machine… ✓")
         } else {
             narrate("[3/8] 暂停 Time Machine… 跳过（无备份目标）")
         }
 
+        step("关闭共享服务")
         let sharingFailures = await deps.sharing.disableAll()
         failures += sharingFailures
+        if !snapshot.sharing.isEmpty, sharingFailures.isEmpty {
+            done("关闭了共享服务")
+        }
         narrate(
             sharingFailures.isEmpty
                 ? "[4/8] 关闭共享服务… \(snapshot.sharing.isEmpty ? "跳过（本来就没开）" : "✓")"
                 : "[4/8] 关闭共享服务… ✗ 不影响睡眠"
         )
 
+        step("关闭蓝牙")
         if snapshot.bluetoothPower == 0 {
-            actions.append("蓝牙本来就关着")
+            done("蓝牙本来就关着")
             narrate("[5/8] 关闭蓝牙… 跳过（本来就关着）")
         } else if let reason = await deps.bluetooth.setPower(false) {
             let detail = FailureText.humanize(reason, severity: .critical)
             failures.append(FailedItem(title: "蓝牙", detail: detail))
             narrate("[5/8] 关闭蓝牙… ✗ \(detail)")
         } else {
-            actions.append("关闭了蓝牙")
+            done("关闭了蓝牙")
             narrate("[5/8] 关闭蓝牙… ✓")
         }
 
         // L2: quit the processes that hold sleep assertions.
+        step("退出阻止睡眠的程序")
         let killResult = await killAll()
         killedCount = killResult.count
         failures += killResult.failures
         if !killResult.failures.isEmpty {
             blockers = killResult.remaining
         }
-        if killResult.count > 0 {
-            actions.insert("关闭了 \(killResult.count) 个程序", at: 0)
-        } else {
-            actions.insert("没有程序在阻止睡眠", at: 0)
-        }
+        done(killResult.count > 0 ? "关闭了 \(killResult.count) 个程序" : "没有程序在阻止睡眠")
         narrate(killResult.narration)
 
+        step("关闭网络唤醒")
         let wompFailed = failures.contains { $0.title == "睡眠设置 womp" }
         if snapshot.pmset["womp"] == 0 {
-            actions.append("网络唤醒本来就关着")
+            done("网络唤醒本来就关着")
             narrate("[7/8] 关闭网络唤醒… 跳过（本来就关着）")
         } else if !wompFailed {
-            actions.append("关闭了网络唤醒")
+            done("关闭了网络唤醒")
             narrate("[7/8] 关闭网络唤醒… ✓")
         } else {
             narrate("[7/8] 关闭网络唤醒… ✗")
@@ -610,7 +715,6 @@ public final class AppState: ObservableObject {
         session = state
         try? deps.store.saveState(state)
 
-        completedActions = actions
         failedItems = failures
         needsHelperInstall = !deps.helper.isInstalled && failures.contains { $0.detail.contains("后台服务") }
 
@@ -625,13 +729,16 @@ public final class AppState: ObservableObject {
     }
 
     /// 出门前拍一张「机器现在长什么样」，回来照着它恢复。
-    private func captureSnapshot() -> Snapshot {
+    ///
+    /// 蓝牙那一步要走 `system_profiler`（0.5～2.5 秒），共享服务要跑 netstat，
+    /// 全部放在后台线程读，界面不会跟着卡。
+    private func captureSnapshot() async -> Snapshot {
         var snapshot = Snapshot()
-        snapshot.pmset = (try? deps.power.readSnapshot()) ?? PmsetSnapshot()
-        snapshot.bluetoothPower = deps.bluetooth.powerState()
+        snapshot.pmset = (try? await deps.power.readSnapshotAsync()) ?? PmsetSnapshot()
+        snapshot.bluetoothPower = await deps.bluetooth.powerState()
         // timeMachineEnabled 不在这里读：它记录的是「我们到底有没有关掉备份」，
         // 由 disable() 的结果写入，否则没关过也会在恢复时把备份打开。
-        snapshot.sharing = deps.sharing.listeningLabels()
+        snapshot.sharing = await deps.sharing.listeningLabels()
         snapshot.scheduledWake = deps.power.scheduledWakes()
         return snapshot
     }
@@ -677,7 +784,7 @@ public final class AppState: ObservableObject {
         var didReallyKill = false
 
         var targets = blockers
-        if targets.isEmpty, let scan = try? deps.scanner.scan() {
+        if targets.isEmpty, let scan = try? await deps.scanner.scan() {
             targets = actionableBlockers(from: scan)
             systemBlockerCount = scan.systemCount
         }
@@ -704,7 +811,7 @@ public final class AppState: ObservableObject {
 
         // 被 launchd 托管的程序退出后会自己回来。只看 kill() 的返回值会误报成功，
         // 所以真关过之后必须再扫一遍确认。
-        if didReallyKill, let rescan = try? deps.scanner.scan() {
+        if didReallyKill, let rescan = try? await deps.scanner.scan() {
             for blocker in rescan.blockers where targets.contains(where: { $0.sameProcess(as: blocker) }) {
                 if remaining.contains(where: { $0.sameProcess(as: blocker) }) { continue }
                 failures.append(
@@ -736,7 +843,7 @@ public final class AppState: ObservableObject {
 
         // 蓝牙是「关不掉就请用户手动关」的典型。用户在控制中心关掉之后点
         // 「我处理好了」，这里必须重新读一次真实状态，否则他会永远卡在这一页。
-        if failedItems.contains(where: { $0.title == "蓝牙" }), deps.bluetooth.powerState() == 0 {
+        if failedItems.contains(where: { $0.title == "蓝牙" }), await deps.bluetooth.powerState() == 0 {
             failedItems.removeAll { $0.title == "蓝牙" }
             if !completedActions.contains("关闭了蓝牙") {
                 completedActions.append("关闭了蓝牙")
@@ -745,7 +852,7 @@ public final class AppState: ObservableObject {
         }
 
         do {
-            let scan = try deps.scanner.scan()
+            let scan = try await deps.scanner.scan()
             systemBlockerCount = scan.systemCount
             let left = actionableBlockers(from: scan)
             if left.isEmpty {
@@ -754,11 +861,14 @@ public final class AppState: ObservableObject {
                 failedItems = failedItems.filter { !$0.isCritical }
                 needsHelperInstall = false
                 killedCount += 1
+                // 清单是按发生顺序排的，这一条就跟着追加；别去改别人的位置。
                 let summary = "关闭了 \(killedCount) 个程序"
-                if let first = completedActions.first, first.hasPrefix("关闭了") || first == "没有程序在阻止睡眠" {
-                    completedActions[0] = summary
+                if let index = completedActions.firstIndex(where: {
+                    $0.hasPrefix("关闭了") && $0.hasSuffix("个程序") || $0 == "没有程序在阻止睡眠"
+                }) {
+                    completedActions[index] = summary
                 } else {
-                    completedActions.insert(summary, at: 0)
+                    completedActions.append(summary)
                 }
                 enterReadyToUnplug()
             } else {
@@ -980,7 +1090,7 @@ public final class AppState: ObservableObject {
                     narrate("→ 第 \(attempt) 次尝试前，\(holders.joined(separator: "、")) 还占着系统睡眠")
                 }
                 // 顺便再清一遍断言：这段时间可能有程序重新抓了断言。
-                if let scan = try? deps.scanner.scan() {
+                if let scan = try? await deps.scanner.scan() {
                     let again = actionableBlockers(from: scan)
                     if !again.isEmpty {
                         blockers = again
@@ -1153,6 +1263,7 @@ public final class AppState: ObservableObject {
     /// 醒够了，提醒 + 倒计时 + 准备动手。
     private func fireForcedSleep() {
         guard countdownPurpose != .forceSleep else { return }
+        guard !forcedSleepCheckInFlight else { return }
         guard session?.phase == .away else { return }
         guard sleepOutcome != .requesting else { return }
 
@@ -1164,7 +1275,22 @@ public final class AppState: ObservableObject {
             return
         }
 
-        let remote = deps.remote.remoteLogins()
+        // `who` 是同步子进程，放到后台去问。查的这段时间里可能已经被别的路径
+        // 抢先处理掉了，所以回来之后要把状态再验一遍。
+        forcedSleepCheckInFlight = true
+        Task { [weak self] in
+            guard let self else { return }
+            let remote = await self.deps.remote.remoteLogins()
+            self.forcedSleepCheckInFlight = false
+            self.finishForcedSleepCheck(remote: remote)
+        }
+    }
+
+    private func finishForcedSleepCheck(remote: [String]) {
+        guard countdownPurpose != .forceSleep else { return }
+        guard session?.phase == .away else { return }
+        guard displaysDetached else { return }
+
         guard remote.isEmpty else {
             guard !didWarnRemoteLogin else { return }
             didWarnRemoteLogin = true
@@ -1493,7 +1619,13 @@ public final class AppState: ObservableObject {
         guard session?.phase == .away else { return }
         HKMLog.info("系统唤醒 → 预读唤醒日志")
         warmPowerLog()
+        // 机器是被用户叫醒的：把窗口摆出来，让他一眼看到「外出中」和
+        // 「结束外出模式」，而不是自己去菜单栏找。
+        onSystemWake?()
     }
+
+    /// 系统唤醒时通知界面把窗口叫出来。
+    var onSystemWake: (@MainActor () -> Void)?
 
     /// 后台读一遍唤醒日志。重复调用会复用正在跑的那次，不会叠着读。
     func warmPowerLog() {

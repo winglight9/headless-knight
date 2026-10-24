@@ -51,7 +51,11 @@ private func gapHarness(
         clock: base.clock,
         auditor: base.auditor
     )
-    let state = AppState(deps: deps, timing: Timing(detectCountdownSeconds: 1, countdownTick: 0.01, sleepVerifySeconds: 0, unplugPollSeconds: 3600, sleepRetrySeconds: 3600))
+    let state = AppState(
+        deps: deps,
+        timing: Timing(countdownTick: 0.01, sleepVerifySeconds: 0, unplugPollSeconds: 3600, sleepRetrySeconds: 3600),
+        autoAdvanceDetect: true
+    )
     return (sim, state)
 }
 
@@ -231,6 +235,8 @@ struct ScanFailureTests {
         state.narrator = { _ in }
 
         state.beginAway()
+        // 扫描现在是后台跑的，错误要等它回来才落到位。
+        await waitUntil { state.errorMessage != nil }
         #expect(state.errorMessage == "读取断言失败")
         await state.waitForFlow()
 

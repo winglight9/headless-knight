@@ -1,8 +1,47 @@
 import SwiftUI
 
-/// Common chrome: the status dot, the app name, and one optional trailing action.
+/// 窗口左上角的状态标签。
+///
+/// 以前那里只有一个 7pt 的彩色圆点，没有文字。用户的反馈很直接：「窗口左上角的
+/// 黄色图标一直显示着，不知道是干嘛用的」。颜色自己不会说话，所以现在是一枚
+/// 带字的胶囊：在家 / 准备中 / 外出中 / 需要处理。
+struct StatusTag: Equatable {
+    let text: String
+    let color: Color
+
+    static let home = StatusTag(text: "在家", color: Theme.green)
+    static let preparing = StatusTag(text: "准备中", color: Theme.amber)
+    static let working = StatusTag(text: "处理中", color: Theme.amber)
+    static let ready = StatusTag(text: "可以拔线", color: Theme.green)
+    static let away = StatusTag(text: "外出中", color: Theme.amber)
+    static let attention = StatusTag(text: "需要处理", color: Theme.red)
+    static let auditing = StatusTag(text: "统计中", color: Theme.amber)
+    static let done = StatusTag(text: "已回来", color: Theme.green)
+    static let settings = StatusTag(text: "设置", color: Theme.grayDot)
+    static let firstRun = StatusTag(text: "首次设置", color: Theme.amber)
+}
+
+struct StatusPill: View {
+    let tag: StatusTag
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(tag.color)
+                .frame(width: 5, height: 5)
+            Text(tag.text)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.secondaryInk)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2.5)
+        .background(Capsule().fill(tag.color.opacity(0.16)))
+    }
+}
+
+/// Common chrome: the status pill, the app name, and one optional trailing action.
 struct PopupScaffold<Content: View>: View {
-    let dot: Color
+    let status: StatusTag
     let title: String
     var onGear: (() -> Void)?
     var onClose: (() -> Void)?
@@ -11,9 +50,7 @@ struct PopupScaffold<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {
-                Circle()
-                    .fill(dot)
-                    .frame(width: 7, height: 7)
+                StatusPill(tag: status)
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.secondaryInk)
