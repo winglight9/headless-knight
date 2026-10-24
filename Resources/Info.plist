@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleExecutable</key>
+    <string>Knight</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.headlessknight.master</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>无头骑士大师</string>
+    <key>CFBundleDisplayName</key>
+    <string>无头骑士大师</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <!-- macOS 15 上 IOBluetooth 的私有开关会经过 CoreBluetooth 的 TCC 检查，
+         没有这个键进程会被直接杀掉（不是拒绝，是 SIGABRT）。 -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>用来在出门前关闭蓝牙，回来后恢复。关闭期间蓝牙外设、隔空投送和离线查找会失效。</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Knight</string>
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+</dict>
+</plist>

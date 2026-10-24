@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>无头骑士大师 · 界面设计审核</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    background: #F0EFEC;
+    color: #1D1D1F;
+    padding: 48px 40px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.3px; }
+  .sub { font-size: 13px; color: #6E6E73; margin-top: 8px; line-height: 1.7; }
+  .section { margin-top: 52px; }
+  h2 {
+    font-size: 15px; font-weight: 600; color: #1D1D1F;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+  }
+  h2 span { font-weight: 400; color: #A1A1A6; margin-left: 10px; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, 300px); gap: 26px; }
+
+  .item { }
+  .cap { font-size: 11px; color: #86868B; margin-top: 10px; line-height: 1.6; }
+  .cap b { color: #1D1D1F; font-weight: 500; }
+
+  .win {
+    width: 300px; background: #fff; border-radius: 14px;
+    border: 0.5px solid rgba(0,0,0,0.12);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06);
+    overflow: hidden; font-size: 13px;
+  }
+  .head { display: flex; align-items: center; padding: 13px 15px 0; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .d-green { background: #34C759; }
+  .d-amber { background: #FF9500; }
+  .d-red { background: #FF3B30; }
+  .d-gray { background: #C7C7CC; }
+  .head .name { margin-left: 7px; font-size: 12px; font-weight: 500; color: #6E6E73; }
+  .head .gear { margin-left: auto; }
+
+  .body { padding: 0 15px 15px; }
+  .center { text-align: center; }
+  .btn {
+    display: block; text-align: center; padding: 11px; border-radius: 9px;
+    font-size: 13px; font-weight: 500;
+  }
+  .btn-primary { background: #1D1D1F; color: #fff; }
+  .btn-ghost { border: 0.5px solid rgba(0,0,0,0.2); color: #1D1D1F; }
+  .btn-green { background: #34C759; color: #fff; }
+  .tiny { font-size: 10px; color: #A1A1A6; }
+  .note { font-size: 11px; color: #6E6E73; }
+  .hr { height: 0.5px; background: rgba(0,0,0,0.08); }
+
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .list { border: 0.5px solid rgba(0,0,0,0.1); border-radius: 9px; overflow: hidden; }
+  .list-item { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 12px; }
+  .list-item:last-child { border-bottom: none; }
+  .mini-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+
+  .menu-bar {
+    width: 100%; height: 30px; background: rgba(255,255,255,0.72);
+    border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.1);
+    display: flex; align-items: center; padding: 0 12px;
+    backdrop-filter: blur(20px);
+  }
+  .mb-item { font-size: 11.5px; color: #3C3C43; }
+  .mb-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .states { display: flex; gap: 34px; justify-content: center; padding: 6px 0 14px; }
+  .state { text-align: center; }
+  .state-box {
+    width: 68px; height: 68px; border-radius: 16px; background: #F5F5F7;
+    border: 0.5px solid rgba(0,0,0,0.06);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto;
+  }
+  .state-label { font-size: 12px; font-weight: 500; margin-top: 9px; }
+  .state-sub { font-size: 11px; color: #A1A1A6; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>无头骑士大师</h1>
+  <p class="sub">界面设计审核稿 · v1.0 · 全部尺寸按真实弹窗 300px 绘制<br>
+  所有数字均为运行时变量，此处为示意值</p>
+
+  <div class="section">
+    <h2>首次引导 <span>仅出现一次，三步走完不再打扰</span></h2>
+    <div class="grid">
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:18px 0 0;">
+              <svg width="38" height="38" viewBox="0 0 22 22">
+                <rect x="2.6" y="6.4" width="16.8" height="12.2" rx="2.6" fill="none" stroke="#1D1D1F" stroke-width="1.7"/>
+                <path d="M8.2 6.4 V4.7 C8.2 3.8 8.9 3.1 9.8 3.1 H12.2 C13.1 3.1 13.8 3.8 13.8 4.7 V6.4" fill="none" stroke="#1D1D1F" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+              <div style="font-size:14px; font-weight:500; margin-top:12px;">无头骑士大师</div>
+              <div class="note" style="margin-top:8px; line-height:1.7;">出门前点一下<br>它替你做完这些</div>
+            </div>
+            <div class="note" style="line-height:2.1; margin-top:16px; padding-left:10px;">
+              · 关掉阻止睡眠的程序<br>
+              · 关闭蓝牙<br>
+              · 记录被唤醒的痕迹
+            </div>
+            <div class="btn btn-primary" style="margin-top:20px;">继续</div>
+            <div class="tiny center" style="margin-top:10px;">1 / 3</div>
+          </div>
+        </div>
+        <div class="cap"><b>引导 1/3</b>　三条能力说明，不解释原理</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:20px 0 0;">
+              <svg width="36" height="36" viewBox="0 0 22 22">
+                <rect x="4.5" y="9.5" width="13" height="9.5" rx="2.2" fill="none" stroke="#1D1D1F" stroke-width="1.6"/>
+                <path d="M7.8 9.5 V7.2 C7.8 5.5 9.2 4.1 11 4.1 C12.8 4.1 14.2 5.5 14.2 7.2 V9.5" fill="none" stroke="#1D1D1F" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <div style="font-size:14px; font-weight:500; margin-top:12px;">需要一次授权</div>
+              <div class="note" style="margin-top:12px; line-height:1.8;">修改系统睡眠设置<br>需要管理员权限。<br><br>授权后不再重复询问。</div>
+            </div>
+            <div class="btn btn-primary" style="margin-top:20px;">授权并安装</div>
+            <div class="tiny center" style="margin-top:10px;">为什么要这个？ ›</div>
+          </div>
+        </div>
+        <div class="cap"><b>引导 2/3</b>　唯一一次要密码，装后台服务</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:16px 0 0;">
+              <div style="font-size:14px; font-weight:500;">出门时会做这些</div>
+            </div>
+            <div class="note" style="line-height:2.15; margin-top:16px; padding-left:8px;">
+              <span style="color:#34C759;">✓</span> 关闭阻止睡眠的程序<br>
+              <span style="color:#34C759;">✓</span> 关闭蓝牙<br>
+              <span style="color:#34C759;">✓</span> 关闭网络唤醒<br>
+              <span style="color:#34C759;">✓</span> 拔线后自动睡眠
+            </div>
+            <div style="margin-top:14px; background:#FFF7E6; border-radius:8px; padding:9px 11px; font-size:10.5px; color:#8A5A00; line-height:1.6;">
+              关闭程序可能丢失未保存的内容
+            </div>
+            <div class="btn btn-primary" style="margin-top:16px;">开始使用</div>
+          </div>
+        </div>
+        <div class="cap"><b>引导 3/3</b>　清单 + 风险提示，无演练</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>日常使用 <span>出门前的四步</span></h2>
+    <div class="grid">
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span>
+            <svg class="gear" width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.4" fill="none" stroke="#A1A1A6" stroke-width="1.2"/><circle cx="7" cy="7" r="5" fill="none" stroke="#A1A1A6" stroke-width="1.2" stroke-dasharray="1.5 2.6"/></svg>
+          </div>
+          <div class="body">
+            <div class="center" style="padding:30px 0 22px;">
+              <div style="font-size:18px; font-weight:500;">在家</div>
+              <div class="note" style="margin-top:5px;">系统可以正常睡眠</div>
+            </div>
+            <div class="btn btn-primary">开始外出模式</div>
+            <div style="margin-top:16px; padding-top:13px; border-top:0.5px solid rgba(0,0,0,0.08);">
+              <div class="note">上次外出 5 小时 22 分</div>
+              <div style="display:flex; gap:12px; margin-top:7px; font-size:11px;">
+                <span style="color:#A1A1A6;">后台唤醒 10 次</span>
+                <span style="color:#FF3B30;">真实唤醒 1 次</span>
+              </div>
+            </div>
+            <div class="tiny" style="margin-top:12px;">已开机自启 · 无 Dock 图标</div>
+          </div>
+        </div>
+        <div class="cap"><b>在家</b>　结论 + 一个按钮 + 上次结果</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:24px 0 0;">
+              <div style="font-size:15px; font-weight:500;">检测到 2 个程序</div>
+              <div class="note" style="margin-top:6px;">它们在阻止电脑睡眠</div>
+            </div>
+            <div class="list" style="margin-top:16px;">
+              <div class="list-item" style="align-items:flex-start; padding:8px 11px;">
+                <span class="mini-dot" style="background:#FF3B30; margin-top:5px;"></span>
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">UU远程</span>
+                    <span class="tiny" style="flex:none;">不许电脑空闲睡眠</span>
+                  </div>
+                  <div class="tiny" style="margin-top:3px; line-height:1.5;">在 UU 里关掉「防休眠」，就不用退出它</div>
+                </div>
+              </div>
+              <div class="list-item" style="align-items:flex-start; padding:8px 11px;">
+                <span class="mini-dot" style="background:#FF3B30; margin-top:5px;"></span>
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Chrome</span>
+                    <span class="tiny" style="flex:none;">正在放音频</span>
+                  </div>
+                  <div class="tiny" style="margin-top:3px; line-height:1.5;">关掉在放声音的那个标签页就好</div>
+                </div>
+              </div>
+            </div>
+            <div class="tiny center" style="margin-top:8px;">另有 1 个只让屏幕不灭，不会退出</div>
+            <div class="tiny center" style="margin-top:6px;">还有 2 个系统进程会自己退出</div>
+            <div style="margin-top:16px; background:#F5F5F7; border-radius:9px; padding:9px 11px; display:flex; align-items:center;">
+              <span class="note">20 秒后自动退出</span>
+              <span style="margin-left:auto; font-size:17px; font-weight:500; font-variant-numeric:tabular-nums;">18</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <div class="btn btn-primary" style="flex:1; padding:10px;">现在就退出</div>
+              <div class="btn btn-ghost" style="flex:1; padding:10px;">取消</div>
+            </div>
+            <div class="tiny center" style="margin-top:12px;">退出后可能丢失未保存的内容</div>
+          </div>
+        </div>
+        <div class="cap"><b>检测 + 倒计时</b>　每个程序写清「挡了什么、怎么关」，20 秒可反悔</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:24px 0 0;">
+              <div style="font-size:15px; font-weight:500;">有 1 项没能完成</div>
+              <div class="note" style="margin-top:6px;">现在走的话，电脑可能睡不着</div>
+            </div>
+            <div style="margin-top:16px; border:0.5px solid #FFD9A0; background:#FFFBF2; border-radius:9px; padding:11px 12px;">
+              <div style="font-size:12px; font-weight:500;">UURemote</div>
+              <div class="note" style="margin-top:4px; line-height:1.6;">无法自动退出，它还在阻止睡眠。请手动退出这个程序。</div>
+            </div>
+            <div class="tiny" style="margin-top:14px; line-height:1.7;">已经完成的：<br>关闭了 2 个程序 · 锁定了设置 · 关闭了蓝牙</div>
+            <div class="btn btn-primary" style="margin-top:16px;">我处理好了</div>
+            <div class="btn btn-ghost" style="margin-top:8px; padding:10px; color:#6E6E73;">仍然继续</div>
+            <div class="tiny center" style="margin-top:12px;">选择继续，报告里会标注这次可能没睡成</div>
+          </div>
+        </div>
+        <div class="cap"><b>阻塞提示</b>　关不掉就中断，绝不静默跳过</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:26px 0 8px;">
+              <svg width="50" height="50" viewBox="0 0 52 52" style="display:block; margin:0 auto;">
+                <circle cx="26" cy="26" r="24.5" fill="#E8F8EC" stroke="#34C759" stroke-width="1"/>
+                <path d="M15 26.5 L22.5 34 L37 19.5" fill="none" stroke="#34C759" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div style="font-size:17px; font-weight:500; margin-top:14px;">可以拔掉显示器了</div>
+              <div class="note" style="margin-top:7px;">拔线后 5 秒自动睡眠</div>
+            </div>
+            <div style="margin-top:16px; padding-top:13px; border-top:0.5px solid rgba(0,0,0,0.08); font-size:11px; line-height:2.1;">
+              <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">关闭了 3 个程序</span></div>
+              <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">锁定了睡眠设置</span></div>
+              <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">关闭了网络唤醒</span></div>
+              <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">关闭了蓝牙</span></div>
+            </div>
+            <div class="btn btn-ghost" style="margin-top:14px; padding:9px; color:#6E6E73;">取消</div>
+          </div>
+        </div>
+        <div class="cap"><b>可以拔掉显示器了</b>　心理交付点，动作指令而非状态汇报</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>外出与报告 <span>拔线后无屏幕，回来插线才看得到</span></h2>
+    <div class="grid">
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span>
+            <svg class="gear" width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.4" fill="none" stroke="#A1A1A6" stroke-width="1.2"/><circle cx="7" cy="7" r="5" fill="none" stroke="#A1A1A6" stroke-width="1.2" stroke-dasharray="1.5 2.6"/></svg>
+          </div>
+          <div class="body">
+            <div class="center" style="padding:28px 0 20px;">
+              <div style="font-size:18px; font-weight:500;">外出中</div>
+              <div style="font-size:12px; color:#FF9500; margin-top:5px;">已 3 小时 12 分</div>
+              <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-top:9px;">
+                <div style="width:19px; height:10px; border:0.5px solid #C7C7CC; border-radius:2.5px; position:relative;">
+                  <div style="position:absolute; left:1.5px; top:1.5px; bottom:1.5px; width:69%; background:#34C759; border-radius:1px;"></div>
+                </div>
+                <span class="note">74% · 下降 4%</span>
+              </div>
+            </div>
+            <div class="btn btn-ghost">结束外出模式</div>
+            <div style="margin-top:15px; padding-top:12px; border-top:0.5px solid rgba(0,0,0,0.08);">
+              <div class="note">点开即统计，不用等</div>
+            </div>
+            <div class="tiny" style="margin-top:12px;">蓝牙已关闭 · 系统已进入睡眠</div>
+          </div>
+        </div>
+        <div class="cap"><b>外出中</b>　实心图标是"该结束了"的锚点</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:42px 0 30px;">
+              <div style="font-size:19px; font-weight:500;">这次很干净</div>
+              <div class="note" style="margin-top:10px;">5 小时 22 分</div>
+              <div class="note" style="margin-top:4px;">电量 74% · 下降 4%</div>
+            </div>
+            <div class="btn btn-primary">知道了</div>
+            <div class="tiny center" style="margin-top:12px;">全程没有被打扰</div>
+          </div>
+        </div>
+        <div class="cap"><b>报告 · 干净</b>　没有建议，因为没什么要改的</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-red"></span><span class="name">无头骑士大师</span></div>
+          <div class="body">
+            <div class="center" style="padding:28px 0 14px;">
+              <div style="font-size:19px; font-weight:500; color:#FF3B30;">被唤醒 1 次</div>
+              <div class="note" style="margin-top:9px;">14:32 · 屏幕亮了 2 分钟</div>
+              <div style="font-size:12px; color:#A1A1A6; margin-top:5px;">共 5 小时 22 分 · 下降 18%</div>
+            </div>
+            <div style="margin-top:12px; background:#FFF7E6; border-radius:9px; padding:10px 12px;">
+              <div style="font-size:11px; color:#8A5A00; line-height:1.6;">外接键盘还在连着，走之前拔掉它</div>
+            </div>
+            <div class="btn btn-primary" style="margin-top:12px;">知道了</div>
+            <div class="tiny center" style="margin-top:12px;">查看详情</div>
+          </div>
+        </div>
+        <div class="cap"><b>报告 · 异常</b>　结论 + 时间 + 电量 + 一条可操作建议</div>
+      </div>
+
+      <div class="item">
+        <div class="win">
+          <div class="head"><span class="dot d-gray"></span><span class="name">设置</span>
+            <svg class="gear" width="12" height="12" viewBox="0 0 12 12"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#A1A1A6" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <div class="body" style="padding-top:14px;">
+            <div class="row" style="padding:9px 0;">
+              <span style="font-size:12px;">开机自启</span>
+              <div style="width:30px; height:17px; border-radius:9px; background:#34C759; position:relative;">
+                <div style="width:13px; height:13px; border-radius:50%; background:#fff; position:absolute; right:2px; top:2px;"></div>
+              </div>
+            </div>
+            <div class="hr"></div>
+            <div class="row" style="padding:11px 0;">
+              <span style="font-size:12px;">拔线后等待</span>
+              <span class="note">5 秒 ›</span>
+            </div>
+            <div class="hr"></div>
+            <div class="row" style="padding:11px 0;">
+              <span style="font-size:12px;">后台服务</span>
+              <span style="font-size:12px; color:#34C759;">已安装</span>
+            </div>
+            <div class="hr"></div>
+            <div class="row" style="padding:11px 0;">
+              <span style="font-size:12px;">重新查看引导</span>
+              <span style="font-size:12px; color:#A1A1A6;">›</span>
+            </div>
+            <div class="tiny center" style="margin-top:22px;">无头骑士大师 1.0</div>
+          </div>
+        </div>
+        <div class="cap"><b>设置</b>　只有四项，能少则少</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>菜单栏图标 <span>没有 Dock 图标，这是唯一长期可见的入口</span></h2>
+    <div class="win" style="width: 100%;">
+      <div style="padding: 20px;">
+        <div class="states">
+          <div class="state">
+            <div class="state-box">
+              <svg width="34" height="34" viewBox="0 0 22 22">
+                <rect x="2.6" y="6.4" width="16.8" height="12.2" rx="2.6" fill="none" stroke="#1D1D1F" stroke-width="1.7"/>
+                <path d="M8.2 6.4 V4.7 C8.2 3.8 8.9 3.1 9.8 3.1 H12.2 C13.1 3.1 13.8 3.8 13.8 4.7 V6.4" fill="none" stroke="#1D1D1F" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="state-label">在家</div>
+            <div class="state-sub">描边</div>
+          </div>
+          <div class="state">
+            <div class="state-box">
+              <svg width="34" height="34" viewBox="0 0 22 22">
+                <rect x="2.6" y="6.4" width="16.8" height="12.2" rx="2.6" fill="#1D1D1F" stroke="#1D1D1F" stroke-width="1.7"/>
+                <path d="M8.2 6.4 V4.7 C8.2 3.8 8.9 3.1 9.8 3.1 H12.2 C13.1 3.1 13.8 3.8 13.8 4.7 V6.4" fill="none" stroke="#1D1D1F" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="state-label">外出中</div>
+            <div class="state-sub">实心</div>
+          </div>
+          <div class="state">
+            <div class="state-box">
+              <svg width="34" height="34" viewBox="0 0 22 22">
+                <rect x="2.6" y="6.4" width="16.8" height="12.2" rx="2.6" fill="#1D1D1F" stroke="#1D1D1F" stroke-width="1.7"/>
+                <path d="M8.2 6.4 V4.7 C8.2 3.8 8.9 3.1 9.8 3.1 H12.2 C13.1 3.1 13.8 3.8 13.8 4.7 V6.4" fill="none" stroke="#1D1D1F" stroke-width="1.7" stroke-linecap="round"/>
+                <circle cx="18.6" cy="4.2" r="3.4" fill="#FF3B30"/>
+              </svg>
+            </div>
+            <div class="state-label">有异常</div>
+            <div class="state-sub">红点</div>
+          </div>
+        </div>
+
+        <div class="menu-bar" style="margin-top: 8px;">
+          <span class="mb-item">访达</span>
+          <span class="mb-item" style="margin-left:14px;">文件</span>
+          <span class="mb-item" style="margin-left:14px;">编辑</span>
+          <span class="mb-item" style="margin-left:14px;">显示</span>
+          <div class="mb-right">
+            <svg width="16" height="10" viewBox="0 0 16 10"><rect x="0.5" y="0.5" width="12" height="9" rx="2.2" fill="none" stroke="#3C3C43" stroke-width="1"/><rect x="2" y="2" width="8" height="6" rx="1" fill="#3C3C43"/><rect x="13.6" y="3" width="1.8" height="4" rx="0.8" fill="#3C3C43"/></svg>
+            <svg width="14" height="11" viewBox="0 0 14 11"><path d="M1 4.2 Q7 -0.8 13 4.2" fill="none" stroke="#3C3C43" stroke-width="1.3"/><path d="M3.6 6.6 Q7 3.6 10.4 6.6" fill="none" stroke="#3C3C43" stroke-width="1.3"/><circle cx="7" cy="9" r="1.2" fill="#3C3C43"/></svg>
+            <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="5.5" cy="5.5" r="3.9" fill="none" stroke="#3C3C43" stroke-width="1.3"/><path d="M8.4 8.4 L12 12" stroke="#3C3C43" stroke-width="1.3"/></svg>
+            <svg width="18" height="18" viewBox="0 0 22 22">
+              <rect x="2.6" y="6.4" width="16.8" height="12.2" rx="2.6" fill="#1D1D1F" stroke="#1D1D1F" stroke-width="1.7"/>
+              <path d="M8.2 6.4 V4.7 C8.2 3.8 8.9 3.1 9.8 3.1 H12.2 C13.1 3.1 13.8 3.8 13.8 4.7 V6.4" fill="none" stroke="#1D1D1F" stroke-width="1.7" stroke-linecap="round"/>
+              <circle cx="18.6" cy="4.2" r="3.4" fill="#FF3B30"/>
+            </svg>
+          </div>
+        </div>
+        <div class="cap" style="text-align:right; margin-top:8px;">实际尺寸 18px，与系统图标并排效果</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
