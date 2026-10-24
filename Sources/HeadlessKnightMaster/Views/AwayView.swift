@@ -109,7 +109,7 @@ struct AuditingView: View {
             VStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                NoteText(text: "正在统计这段时间的唤醒记录…", alignment: .center)
+                NoteText(text: "正在统计唤醒记录，并把设置恢复原样", alignment: .center)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 44)

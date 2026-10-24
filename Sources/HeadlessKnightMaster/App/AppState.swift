@@ -138,6 +138,11 @@ public final class AppState: ObservableObject {
     private var awaitingDisplayReturnForRetry = false
     /// 扫描本身失败时留一条记录，报告里要能看出这次没检查过。
     private var scanIssue: FailedItem?
+    /// 当前这份报告对应的那一趟，设置是不是已经还原过了。
+    ///
+    /// 正常流程里「结束外出模式」就还原完了，报告页上的「完成」只是关窗口。
+    /// 只有旧版本留在磁盘上的 `.audited` 记录会走到「还没还原」这一支。
+    private var settingsRestoredForReport = false
 
     // MARK: - 强力模式的状态
 
@@ -1375,6 +1380,13 @@ public final class AppState: ObservableObject {
         stopStrongModeWatch()
         clearPowerLogCache()
         guard let state = session else {
+            // 内存里没有这次外出的记录（状态文件损坏或被删）。快照丢了，只能按
+            // 安全方向还原一次：蓝牙打开、睡眠解锁，别把机器留在睡不着的状态。
+            if pendingRestore {
+                _ = await restore(snapshot: .safeDefaults)
+                pendingRestore = false
+                refreshSleepDisabled()
+            }
             screen = .home
             iconState = .home
             return
@@ -1426,8 +1438,13 @@ public final class AppState: ObservableObject {
         await finishAwayNow(state)
     }
 
-    /// 审计 + 出报告。调用方负责置位 `isBusy` 和切到 `auditing`，
+    /// 审计 + 还原设置 + 出报告。调用方负责置位 `isBusy` 和切到 `auditing`，
     /// 这样「点图标」和「点按钮」两条入口不会各自跑一遍。
+    ///
+    /// 还原放在这里，不放在报告页那个按钮上。用户点了「结束外出模式」，这一趟
+    /// 就该结束：机器回到原样、状态文件清掉，报告只是事后看一眼的东西。以前还原
+    /// 挂在「知道了」上，用户看完报告直接把窗口关掉，机器就一直留在「蓝牙关着、
+    /// 睡不着的」状态里，而他以为已经结束了。
     private func finishAwayNow(_ state: SessionState) async {
         isBusy = true
         let endedAt = deps.clock.now
@@ -1441,11 +1458,15 @@ public final class AppState: ObservableObject {
         let batteryEnd = deps.battery.percentage()
         let rebooted = abs(deps.clock.bootTime() - state.bootTimeAtStart) > 1
 
+        // 先把机器还原，再定稿报告：还原失败也是这一趟的结果，得写进同一份里。
+        let restoreFailures = await restore(snapshot: state.snapshot)
+
         var failedItems = state.snapshot.failedItems
         // 叫它睡它没睡，是这次流程最该说清楚的一件事。
         if state.sleepRequestedAt != nil, !result.sleptAtAll {
             failedItems.append("睡眠：请求睡眠后系统没有进入睡眠")
         }
+        failedItems += restoreFailures.map(\.summary)
 
         let report = Report(
             startedAt: state.startedAt,
@@ -1463,13 +1484,28 @@ public final class AppState: ObservableObject {
         )
 
         self.report = report
-        var updated = state
-        updated.phase = .audited
-        updated.lastReport = report
-        session = updated
-        try? deps.store.saveState(updated)
-        try? deps.store.appendReport(report)
         lastReport = report
+        try? deps.store.appendReport(report)
+
+        if restoreFailures.isEmpty {
+            settingsRestoredForReport = true
+            pendingRestore = false
+            // 机器还原了、报告也存好了，这次外出的记录到此为止。
+            try? deps.store.clearState()
+            session = nil
+        } else {
+            // 还原失败：状态文件绝不能删，里面那份快照是用户原始设置的唯一副本。
+            // 删掉之后下次拍快照，拍到的就是已经被我们改过的值，永远回不去。
+            settingsRestoredForReport = false
+            var updated = state
+            updated.phase = .needsRestore
+            updated.lastReport = report
+            session = updated
+            try? deps.store.saveState(updated)
+            pendingRestore = true
+            errorMessage = "有 \(restoreFailures.count) 项没能恢复：\(restoreFailures.map(\.title).joined(separator: "、"))"
+        }
+
         iconState = report.hasAnomaly ? .alert : .home
         stopTicker()
         // 这一趟的日志已经用完了，下一趟重新读。
@@ -1480,7 +1516,11 @@ public final class AppState: ObservableObject {
         narrate("→ 报告：\(report.headline)（\(report.durationText)）")
     }
 
-    /// 「知道了」: put the machine back the way it was.
+    /// 报告页那个按钮：关掉报告，回首页。
+    ///
+    /// 设置已经在「结束外出模式」时还原完了，这里不碰系统。唯一的例外是旧版本
+    /// 留在磁盘上的 `.audited` 记录——那份记录生成时还原还挂在按钮上，升级后
+    /// 第一次打开得替它补一次，否则那台机器会一直停在改过的设置上。
     public func acknowledgeReport() {
         guard !isBusy else { return }
         isBusy = true
@@ -1497,42 +1537,64 @@ public final class AppState: ObservableObject {
     func acknowledgeReportNow() async {
         isBusy = true
         defer { isBusy = false }
-        let snapshot = session?.snapshot ?? Snapshot.safeDefaults
-        var failures = await restore(snapshot: snapshot)
-        if session == nil {
-            failures.append(FailedItem(title: "状态文件", detail: "没找到这次外出的记录，已用安全默认值恢复"))
+
+        if !settingsRestoredForReport {
+            let snapshot = session?.snapshot ?? Snapshot.safeDefaults
+            var failures = await restore(snapshot: snapshot)
+            if session == nil {
+                failures.append(FailedItem(title: "状态文件", detail: "没找到这次外出的记录，已用安全默认值恢复"))
+            }
+
+            // 恢复失败也要能被看到：补进刚生成的那份报告里。同一条只记一次——
+            // 结束外出时已经写进去的，这里不再重复。
+            if !failures.isEmpty, var stored = report ?? lastReport {
+                for summary in failures.map(\.summary) where !stored.failedItems.contains(summary) {
+                    stored.failedItems.append(summary)
+                }
+                try? deps.store.updateLastReport(stored)
+                lastReport = stored
+                report = stored
+            }
+
+            failedItems = failures
+            guard failures.isEmpty else {
+                // 同 abortAway：恢复失败时状态文件必须留着，快照只有这一份。
+                if var updated = session {
+                    updated.phase = .needsRestore
+                    session = updated
+                    try? deps.store.saveState(updated)
+                }
+                pendingRestore = true
+                completedActions = []
+                screen = .home
+                iconState = .home
+                showDetail = false
+                report = nil
+                errorMessage = "有 \(failures.count) 项没能恢复：\(failures.map(\.title).joined(separator: "、"))"
+                return
+            }
+            settingsRestoredForReport = true
+            pendingRestore = false
+            try? deps.store.clearState()
+            session = nil
         }
 
-        // 恢复失败也要能被看到：补进刚生成的那份报告里。
-        if !failures.isEmpty, var stored = report ?? lastReport {
-            stored.failedItems += failures.map(\.summary)
-            try? deps.store.updateLastReport(stored)
-            lastReport = stored
-            report = stored
-        }
-
-        failedItems = failures
         completedActions = []
         screen = .home
         iconState = .home
         showDetail = false
+        report = nil
+        // 「完成」就是把窗口关掉——这是 macOS 上结果窗口的常规做法，
+        // 不用用户再去点一下别处让它消失。
+        onDismissReport?()
+    }
 
-        guard failures.isEmpty else {
-            // 同 abortAway：恢复失败时状态文件必须留着，快照只有这一份。
-            if var updated = session {
-                updated.phase = .needsRestore
-                session = updated
-                try? deps.store.saveState(updated)
-            }
-            pendingRestore = true
-            report = nil
-            errorMessage = "有 \(failures.count) 项没能恢复：\(failures.map(\.title).joined(separator: "、"))"
-            return
-        }
-
-        pendingRestore = false
-        try? deps.store.clearState()
-        session = nil
+    /// 报告页被收起（点了别处、切到别的 app）。这一趟已经彻底结束，回首页，
+    /// 下次点图标看到的是正常的家，而不是一份旧报告。
+    public func dismissReportIfNeeded() {
+        guard screen == .report, !isBusy else { return }
+        screen = .home
+        showDetail = false
         report = nil
     }
 
@@ -1639,6 +1701,9 @@ public final class AppState: ObservableObject {
 
     /// 系统唤醒时通知界面把窗口叫出来。
     var onSystemWake: (@MainActor () -> Void)?
+
+    /// 报告页点了「完成」：把窗口收起来。
+    var onDismissReport: (@MainActor () -> Void)?
 
     /// 后台读一遍唤醒日志。重复调用会复用正在跑的那次，不会叠着读。
     func warmPowerLog() {

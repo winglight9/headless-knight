@@ -85,7 +85,12 @@ final class PopoverHost: NSObject, NSWindowDelegate {
 
     func hide() {
         panel.orderOut(nil)
+        onHidden?()
     }
+
+    /// 窗口自己收起来了（点别处、再点一下图标、点「完成」）。报告页收起来
+    /// 就等于这一趟看完了，界面该回到首页，别下次点图标还是那份旧报告。
+    var onHidden: (@MainActor () -> Void)?
 
     /// 流程进行中，用户又点了一下图标：别关，把它提到前面就行。
     func bringToFront() {

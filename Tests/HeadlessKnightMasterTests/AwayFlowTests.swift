@@ -688,7 +688,8 @@ struct AwayFlowReportTests {
 
         #expect(harness.sim.storedReports.count == 1)
         #expect(harness.state.lastReport?.headline == "这次很干净")
-        #expect(harness.sim.storedState?.phase == .audited)
+        // 报告出来了，这一趟就结束了：状态文件不该留在磁盘上等用户点「完成」。
+        #expect(harness.sim.storedState == nil)
     }
 
     @Test("离开期间机器重启过：报告要标出来")
@@ -709,6 +710,26 @@ struct AwayFlowReportTests {
 @Suite(.serialized)
 @MainActor
 struct AwayFlowRestoreTests {
+    @Test("点「结束外出模式」那一下就恢复，不用等报告页上的按钮")
+    func finishAwayRestoresImmediately() async {
+        let harness = AwayHarness { twoBlockers($0) }
+        await harness.runFullTrip()
+
+        // 报告已经在屏幕上了，用户还没点任何按钮。
+        #expect(harness.state.screen == .report)
+        #expect(harness.state.session == nil)
+        #expect(harness.sim.storedState == nil)
+        #expect(harness.sim.pmsetValues["disablesleep"] == 1)
+        #expect(harness.sim.bluetoothState == 1)
+
+        // 再点「完成」：只关报告，系统设置一次都不该再碰。
+        let before = harness.sim.events.filter { $0.hasPrefix("restore") }.count
+        await harness.acknowledge()
+        let after = harness.sim.events.filter { $0.hasPrefix("restore") }.count
+        #expect(before == after)
+        #expect(harness.state.screen == .home)
+    }
+
     @Test("正常恢复：pmset 回到最初的值，状态文件清掉")
     func restorePutsEverythingBack() async {
         let harness = AwayHarness { twoBlockers($0) }
@@ -763,10 +784,12 @@ struct AwayFlowRestoreTests {
             twoBlockers(sim)
             sim.timeMachineIsOn = true
         }
-        await harness.runFullTrip()
+        await harness.enterAway()
         #expect(harness.state.session?.snapshot.timeMachineEnabled == true)
 
-        await harness.acknowledge()
+        await harness.unplug()
+        harness.sim.advanceClock(by: 3600)
+        await harness.state.finishAway()
 
         #expect(harness.sim.events.contains("tm enable"))
         #expect(harness.sim.timeMachineIsOn == true)

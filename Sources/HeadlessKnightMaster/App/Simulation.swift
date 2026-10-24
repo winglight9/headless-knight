@@ -143,20 +143,26 @@ enum Simulation {
             }
         }
 
-        // 模拟点「知道了」
-        print(String(repeating: "─", count: 56))
-        print("模拟：点「知道了」，恢复设置")
-        await state.acknowledgeReportNow()
-        print("→ screen = \(describe(state.screen))")
-        if let message = state.errorMessage {
-            print("→ 恢复提示：\(message)")
-        }
-        // 恢复失败必须落在报告里，否则用户点完「知道了」就再也看不到它了。
+        // 「结束外出模式」那一下就恢复完了，这里核对一遍。
+        print("→ 结束外出时已恢复：\(state.session == nil ? "状态文件已清" : "状态文件还在")")
+        // 恢复失败必须落在报告里，否则用户看完报告就再也看不到它了。
         if let stored = sim.storedReports.last, !stored.failedItems.isEmpty {
             print("→ 落盘的报告：\(stored.headline)")
             for item in stored.failedItems {
                 print("    未完成：\(item)")
             }
+        }
+
+        // 模拟点「完成」：只是关窗口，不该再碰系统。
+        print(String(repeating: "─", count: 56))
+        let restoreCountBefore = sim.events.filter { $0.hasPrefix("restore") }.count
+        print("模拟：点「完成」，关报告")
+        await state.acknowledgeReportNow()
+        print("→ screen = \(describe(state.screen))")
+        let restoreCountAfter = sim.events.filter { $0.hasPrefix("restore") }.count
+        print("→ 这一下没有再动系统设置（恢复动作 \(restoreCountBefore) → \(restoreCountAfter)）")
+        if let message = state.errorMessage {
+            print("→ 恢复提示：\(message)")
         }
         printTrace(sim)
         return 0

@@ -21,13 +21,10 @@ struct CleanReportView: View {
                 .padding(.top, 42)
                 .padding(.bottom, 30)
 
-                PopupButton(title: "知道了", isEnabled: !state.isBusy) {
+                PopupButton(title: "完成", isEnabled: !state.isBusy) {
                     state.acknowledgeReport()
                 }
-
-                TinyText(text: "全程没有被打扰", alignment: .center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 12)
+                .padding(.top, 4)
 
                 DetailDisclosure(isExpanded: state.showDetail, onToggle: { state.toggleDetail() }) {
                     detailLines
@@ -88,7 +85,7 @@ struct AnomalyReportView: View {
                     .padding(.top, 12)
                 }
 
-                PopupButton(title: "知道了", isEnabled: !state.isBusy) {
+                PopupButton(title: "完成", isEnabled: !state.isBusy) {
                     state.acknowledgeReport()
                 }
                 .padding(.top, 12)

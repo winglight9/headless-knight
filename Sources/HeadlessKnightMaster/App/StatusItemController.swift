@@ -31,6 +31,14 @@ final class StatusItemController: NSObject {
             self?.showForWake()
         }
 
+        // 报告页的「完成」= 关窗口，跟别的 app 里的结果窗口一样。
+        state.onDismissReport = { [weak self] in
+            self?.popover.hide()
+        }
+        popover.onHidden = { [weak self] in
+            self?.state.dismissReportIfNeeded()
+        }
+
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(appearanceChanged),
