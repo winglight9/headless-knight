@@ -8,7 +8,7 @@
 点菜单栏公文包
   → 「在家 · 系统可以正常睡眠」
   → 点「开始外出模式」
-  → 列出挡睡眠的程序，每个写清挡了什么、怎么关，20 秒后自动退出
+  → 列出挡睡眠的程序，每个写清挡了什么、怎么关；自己关也行，点「一键全部关闭」也行
   → 锁定 pmset、关共享服务、关蓝牙、暂停 Time Machine、关网络唤醒
   → 「可以拔掉显示器了」
 你拔线
@@ -49,7 +49,7 @@
 
 ```bash
 ./scripts/swift.sh build     # 编译
-./scripts/swift.sh test      # 跑测试（198 条）
+./scripts/swift.sh test      # 跑测试（201 条）
 ./scripts/build-app.sh       # 组装 build/Knight.app
 ./scripts/make-dmg.sh        # 打成 build/Knight.dmg
 ```
@@ -70,7 +70,7 @@
 Sources/HKMKit/                不依赖 UI 的核心：pmset、断言扫描、显示器、唤醒日志、蓝牙、共享服务
 Sources/HeadlessKnightMaster/  菜单栏 App（SwiftUI + AppKit）
 Sources/hkm-helper/            root 提权小工具，只做 pmset 那几件事
-Tests/                         198 条测试，含假时钟与假系统
+Tests/                         201 条测试，含假时钟与假系统
 docs/design.md                 设计文档：为什么这么设计、踩过哪些坑
 preview/ui.html                界面设计稿（浏览器打开）
 ```
@@ -79,8 +79,8 @@ preview/ui.html                界面设计稿（浏览器打开）
 
 - 只支持 macOS 13 及以上；界面只有中文。
 - ad-hoc 签名、未公证。**改名或移动 `.app` 之后，蓝牙权限要重新授权**——TCC 是按路径记的。
-- 自动退出挡睡眠的程序可能丢掉未保存的内容，所以给了 20 秒倒计时和「取消」。
-- 检测页的程序列表不会实时刷新：你手动关掉某个程序后，要等倒计时走完或点「现在就退出」才继续。
+- 自动退出挡睡眠的程序可能丢掉未保存的内容，所以不点按钮就不动手，旁边还有「取消，先不出门」。
+- 检测页只显示前 4 个挡睡眠的程序，多出来的会一起关掉；清单每 1.5 秒刷新一次，你手动关掉某个程序，它就从清单上消失，全关干净了自动往下走。
 
 ## License
 
