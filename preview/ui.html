@@ -36,11 +36,13 @@
     overflow: hidden; font-size: 13px;
   }
   .head { display: flex; align-items: center; padding: 13px 15px 0; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; }
-  .d-green { background: #34C759; }
-  .d-amber { background: #FF9500; }
-  .d-red { background: #FF3B30; }
-  .d-gray { background: #C7C7CC; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2.5px 6px; border-radius: 999px;
+          font-size: 10px; font-weight: 500; color: #6E6E73; }
+  .pill .pd { width: 5px; height: 5px; border-radius: 50%; }
+  .pill.green { background: rgba(52,199,89,0.16); }  .pill.green .pd { background: #34C759; }
+  .pill.amber { background: rgba(255,149,0,0.16); }  .pill.amber .pd { background: #FF9500; }
+  .pill.red   { background: rgba(255,59,48,0.16); }  .pill.red .pd { background: #FF3B30; }
+  .pill.gray  { background: rgba(199,199,204,0.22); } .pill.gray .pd { background: #C7C7CC; }
   .head .name { margin-left: 7px; font-size: 12px; font-weight: 500; color: #6E6E73; }
   .head .gear { margin-left: auto; }
 
@@ -86,16 +88,16 @@
 <div class="page">
 
   <h1>无头骑士大师</h1>
-  <p class="sub">界面设计审核稿 · v1.0 · 全部尺寸按真实弹窗 300px 绘制<br>
+  <p class="sub">界面设计审核稿 · v1.3 · 全部尺寸按真实弹窗 300px 绘制<br>
   所有数字均为运行时变量，此处为示意值</p>
 
   <div class="section">
     <h2>首次引导 <span>仅出现一次，三步走完不再打扰</span></h2>
     <div class="grid">
 
-      <div class="item">
+      <div class="item" data-shot="onboarding-1">
         <div class="win">
-          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill amber"><span class="pd"></span>首次设置</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:18px 0 0;">
               <svg width="38" height="38" viewBox="0 0 22 22">
@@ -117,9 +119,9 @@
         <div class="cap"><b>引导 1/3</b>　三条能力说明，不解释原理</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="onboarding-2">
         <div class="win">
-          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill amber"><span class="pd"></span>首次设置</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:20px 0 0;">
               <svg width="36" height="36" viewBox="0 0 22 22">
@@ -136,9 +138,9 @@
         <div class="cap"><b>引导 2/3</b>　唯一一次要密码，装后台服务</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="onboarding-3">
         <div class="win">
-          <div class="head"><span class="dot d-gray"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill amber"><span class="pd"></span>首次设置</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:16px 0 0;">
               <div style="font-size:14px; font-weight:500;">出门时会做这些</div>
@@ -165,9 +167,9 @@
     <h2>日常使用 <span>出门前的四步</span></h2>
     <div class="grid">
 
-      <div class="item">
+      <div class="item" data-shot="home">
         <div class="win">
-          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span>
+          <div class="head"><span class="pill green"><span class="pd"></span>在家</span><span class="name">无头骑士大师</span>
             <svg class="gear" width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.4" fill="none" stroke="#A1A1A6" stroke-width="1.2"/><circle cx="7" cy="7" r="5" fill="none" stroke="#A1A1A6" stroke-width="1.2" stroke-dasharray="1.5 2.6"/></svg>
           </div>
           <div class="body">
@@ -189,13 +191,13 @@
         <div class="cap"><b>在家</b>　结论 + 一个按钮 + 上次结果</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="detecting">
         <div class="win">
-          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill amber"><span class="pd"></span>准备中</span><span class="name">无头骑士大师</span></div>
           <div class="body">
-            <div class="center" style="padding:24px 0 0;">
-              <div style="font-size:15px; font-weight:500;">检测到 2 个程序</div>
-              <div class="note" style="margin-top:6px;">它们在阻止电脑睡眠</div>
+            <div class="center" style="padding:22px 0 0;">
+              <div style="font-size:15px; font-weight:500;">2 个程序在挡睡眠</div>
+              <div class="note" style="margin-top:5px;">另有 1 个只让屏幕不灭，不会动它们；2 个系统进程会自己退出</div>
             </div>
             <div class="list" style="margin-top:16px;">
               <div class="list-item" style="align-items:flex-start; padding:8px 11px;">
@@ -219,25 +221,20 @@
                 </div>
               </div>
             </div>
-            <div class="tiny center" style="margin-top:8px;">另有 1 个只让屏幕不灭，不会退出</div>
-            <div class="tiny center" style="margin-top:6px;">还有 2 个系统进程会自己退出</div>
-            <div style="margin-top:16px; background:#F5F5F7; border-radius:9px; padding:9px 11px; display:flex; align-items:center;">
-              <span class="note">20 秒后自动退出</span>
-              <span style="margin-left:auto; font-size:17px; font-weight:500; font-variant-numeric:tabular-nums;">18</span>
+            <div style="margin-top:16px; text-align:center;">
+              <div style="font-size:12px; color:#1D1D1F;">手动关掉它们，或者点下面一键关闭</div>
+              <div class="btn btn-primary" style="margin-top:9px;">一键全部关闭</div>
+              <div class="note" style="margin-top:9px;">会直接退出这些程序，没保存的会丢</div>
             </div>
-            <div style="display:flex; gap:8px; margin-top:12px;">
-              <div class="btn btn-primary" style="flex:1; padding:10px;">现在就退出</div>
-              <div class="btn btn-ghost" style="flex:1; padding:10px;">取消</div>
-            </div>
-            <div class="tiny center" style="margin-top:12px;">退出后可能丢失未保存的内容</div>
+            <div class="tiny center" style="margin-top:12px;">取消，先不出门</div>
           </div>
         </div>
-        <div class="cap"><b>检测 + 倒计时</b>　每个程序写清「挡了什么、怎么关」，20 秒可反悔</div>
+        <div class="cap"><b>检测</b>　每个程序写清「挡了什么、怎么关」，关不关你说了算</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="blocked">
         <div class="win">
-          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill red"><span class="pd"></span>需要处理</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:24px 0 0;">
               <div style="font-size:15px; font-weight:500;">有 1 项没能完成</div>
@@ -256,9 +253,9 @@
         <div class="cap"><b>阻塞提示</b>　关不掉就中断，绝不静默跳过</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="ready">
         <div class="win">
-          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill green"><span class="pd"></span>可以拔线</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:26px 0 8px;">
               <svg width="50" height="50" viewBox="0 0 52 52" style="display:block; margin:0 auto;">
@@ -274,7 +271,8 @@
               <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">关闭了网络唤醒</span></div>
               <div><span style="color:#34C759;">✓</span> <span style="color:#6E6E73;">关闭了蓝牙</span></div>
             </div>
-            <div class="btn btn-ghost" style="margin-top:14px; padding:9px; color:#6E6E73;">取消</div>
+            <div class="btn btn-ghost" style="margin-top:12px; padding:10px;">我已经拔线了，让它睡</div>
+            <div class="btn btn-ghost" style="margin-top:8px; padding:10px;">结束外出模式</div>
           </div>
         </div>
         <div class="cap"><b>可以拔掉显示器了</b>　心理交付点，动作指令而非状态汇报</div>
@@ -287,9 +285,9 @@
     <h2>外出与报告 <span>拔线后无屏幕，回来插线才看得到</span></h2>
     <div class="grid">
 
-      <div class="item">
+      <div class="item" data-shot="away">
         <div class="win">
-          <div class="head"><span class="dot d-amber"></span><span class="name">无头骑士大师</span>
+          <div class="head"><span class="pill amber"><span class="pd"></span>外出中</span><span class="name">无头骑士大师</span>
             <svg class="gear" width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.4" fill="none" stroke="#A1A1A6" stroke-width="1.2"/><circle cx="7" cy="7" r="5" fill="none" stroke="#A1A1A6" stroke-width="1.2" stroke-dasharray="1.5 2.6"/></svg>
           </div>
           <div class="body">
@@ -313,25 +311,24 @@
         <div class="cap"><b>外出中</b>　实心图标是"该结束了"的锚点</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="report-clean">
         <div class="win">
-          <div class="head"><span class="dot d-green"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill green"><span class="pd"></span>已回来</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:42px 0 30px;">
               <div style="font-size:19px; font-weight:500;">这次很干净</div>
               <div class="note" style="margin-top:10px;">5 小时 22 分</div>
               <div class="note" style="margin-top:4px;">电量 74% · 下降 4%</div>
             </div>
-            <div class="btn btn-primary">知道了</div>
-            <div class="tiny center" style="margin-top:12px;">全程没有被打扰</div>
+            <div class="btn btn-primary">完成</div>
           </div>
         </div>
         <div class="cap"><b>报告 · 干净</b>　没有建议，因为没什么要改的</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="report-anomaly">
         <div class="win">
-          <div class="head"><span class="dot d-red"></span><span class="name">无头骑士大师</span></div>
+          <div class="head"><span class="pill red"><span class="pd"></span>需要处理</span><span class="name">无头骑士大师</span></div>
           <div class="body">
             <div class="center" style="padding:28px 0 14px;">
               <div style="font-size:19px; font-weight:500; color:#FF3B30;">被唤醒 1 次</div>
@@ -341,16 +338,16 @@
             <div style="margin-top:12px; background:#FFF7E6; border-radius:9px; padding:10px 12px;">
               <div style="font-size:11px; color:#8A5A00; line-height:1.6;">外接键盘还在连着，走之前拔掉它</div>
             </div>
-            <div class="btn btn-primary" style="margin-top:12px;">知道了</div>
+            <div class="btn btn-primary" style="margin-top:12px;">完成</div>
             <div class="tiny center" style="margin-top:12px;">查看详情</div>
           </div>
         </div>
         <div class="cap"><b>报告 · 异常</b>　结论 + 时间 + 电量 + 一条可操作建议</div>
       </div>
 
-      <div class="item">
+      <div class="item" data-shot="settings">
         <div class="win">
-          <div class="head"><span class="dot d-gray"></span><span class="name">设置</span>
+          <div class="head"><span class="pill gray"><span class="pd"></span>设置</span><span class="name">设置</span>
             <svg class="gear" width="12" height="12" viewBox="0 0 12 12"><path d="M2 2 L10 10 M10 2 L2 10" stroke="#A1A1A6" stroke-width="1.4" stroke-linecap="round"/></svg>
           </div>
           <div class="body" style="padding-top:14px;">
@@ -375,7 +372,7 @@
               <span style="font-size:12px;">重新查看引导</span>
               <span style="font-size:12px; color:#A1A1A6;">›</span>
             </div>
-            <div class="tiny center" style="margin-top:22px;">无头骑士大师 1.0</div>
+            <div class="tiny center" style="margin-top:22px;">无头骑士大师 1.3</div>
           </div>
         </div>
         <div class="cap"><b>设置</b>　只有四项，能少则少</div>
