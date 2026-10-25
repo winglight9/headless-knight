@@ -59,11 +59,25 @@ struct ReportTests {
         #expect(report.suggestion?.isActionable == true)
     }
 
-    @Test("扩展坞供电波动给可操作建议")
-    func dockSuggestion() {
-        let report = makeReport(real: [wake("smc.70070000 USB-C_plug SMC.OutboxNotEmpty")])
-        #expect(report.suggestion?.text == "扩展坞供电波动唤醒了机器，走之前拔掉坞")
-        #expect(report.suggestion?.isActionable == true)
+    /// 用户 2026-10-25 的质问：「软件提示有一个拓展坞？我没用过类似的东西。」
+    ///
+    /// 他按了下键盘，唤醒原因里带着 `smc.70070000`（macOS 每条唤醒原因几乎都有），
+    /// 旧代码拿 `smc.` 当特征去匹配「扩展坞供电波动」，于是凭空给他编了个坞。
+    @Test("带 smc. 的键盘唤醒不许说成扩展坞")
+    func keyboardWakeIsNotADock() {
+        let report = makeReport(
+            real: [wake("smc.70070000 trackpadkeyboard SMC.OutboxNotEmpty/HID Activity")]
+        )
+        #expect(report.suggestion?.text.contains("扩展坞") == false)
+        #expect(report.suggestion?.text.contains("键盘被按下") == true)
+    }
+
+    /// 真插了线就说「有人插了线」，别甩给一个用户没有的设备。
+    @Test("插线的唤醒说人话")
+    func usbPlugSuggestion() {
+        let report = makeReport(real: [wake("smc.70070000 USB-C_plug SMC.OutboxNotEmpty/")])
+        #expect(report.suggestion?.text.contains("有人插了线") == true)
+        #expect(report.suggestion?.text.contains("扩展坞") == false)
     }
 
     @Test("局域网唤醒给可操作建议")

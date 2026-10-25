@@ -115,6 +115,11 @@ public struct Report: Codable, Sendable, Equatable {
     }
 
     /// Design doc 5.1: only suggest things software can still change.
+    ///
+    /// 判断顺序很重要：**用户输入永远排在最前面**。macOS 的唤醒原因里几乎每条都
+    /// 带 `smc.70070000` 这种 SMC 标识，把它当特征去匹配「扩展坞供电波动」，
+    /// 于是用户按一下键盘也被说成「有扩展坞」——2026-10-25 13:16 就是这么误报的。
+    /// 顺带把 `dock` 也删了：唤醒原因里不会出现这个词，留着只会误导。
     public var suggestion: Suggestion? {
         if !sleptAtAll {
             return Suggestion(text: "这次没睡成，有程序一直在阻止睡眠", isActionable: true)
@@ -122,20 +127,20 @@ public struct Report: Codable, Sendable, Equatable {
         guard let wake = realWakes.first else { return nil }
         let reason = wake.reason.lowercased()
 
-        if reason.contains("usb-c_plug") || reason.contains("usb") || reason.contains("dock") || reason.contains("smc.") {
-            return Suggestion(text: "扩展坞供电波动唤醒了机器，走之前拔掉坞", isActionable: true)
-        }
-        if reason.contains("network") || reason.contains("en0") || reason.contains("magicwake") {
-            return Suggestion(text: "已关闭网络唤醒，仍被局域网设备叫醒", isActionable: true)
-        }
-        if reason.contains("maintenance") || reason.contains("rtc") || reason.contains("sleepservice") {
-            return Suggestion(text: "系统维护唤醒，可在设置里彻底关闭", isActionable: true)
-        }
         if reason.contains("keyboard") || reason.contains("hid") || reason.contains("trackpad") {
             return Suggestion(text: "\(wake.timeText) 键盘被按下", isActionable: false)
         }
         if reason.contains("useractivity") {
             return Suggestion(text: "\(wake.timeText) 有人动了机器", isActionable: false)
+        }
+        if reason.contains("network") || reason.contains("en0") || reason.contains("magicwake") {
+            return Suggestion(text: "已关闭网络唤醒，仍被局域网设备叫醒", isActionable: true)
+        }
+        if reason.contains("usb-c_plug") || reason.contains("usb") {
+            return Suggestion(text: "\(wake.timeText) 有人插了线", isActionable: false)
+        }
+        if reason.contains("maintenance") || reason.contains("rtc") || reason.contains("sleepservice") {
+            return Suggestion(text: "系统维护唤醒，可在设置里彻底关闭", isActionable: true)
         }
         if reason.contains("notification") {
             return Suggestion(text: "\(wake.timeText) 来了通知，屏幕亮了一下", isActionable: false)

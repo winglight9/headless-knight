@@ -116,7 +116,16 @@ final class HelperDaemon {
             guard HelperDaemon.allowedPmsetKeys.contains(key) else {
                 return .failure(id: request.id, message: "不允许修改 \(key)")
             }
-            return run(request.id, "/usr/bin/pmset", ["-a", key, value])
+            // `-a` 全部、`-c` 插电、`-b` 电池。默认 a。
+            //
+            // 之所以要能分开写：`displaysleep` 在两套电源里经常不一样（用户的机器
+            // 插电是 0 = 永不关屏，电池是 2）。只用 `-a` 还原，会把电池那套也改成
+            // 插电的值，用户下次用电池就再也不关屏了。
+            let scope = request.arguments["scope"] ?? "a"
+            guard ["a", "c", "b"].contains(scope) else {
+                return .failure(id: request.id, message: "不支持的电源类型 \(scope)")
+            }
+            return run(request.id, "/usr/bin/pmset", ["-\(scope)", key, value])
 
         case .pmsetSleepNow:
             return run(request.id, "/usr/bin/pmset", ["sleepnow"])

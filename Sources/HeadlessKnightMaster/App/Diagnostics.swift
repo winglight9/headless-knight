@@ -79,6 +79,10 @@ enum Diagnostics {
         print("  正在监听的共享服务：\(listening.isEmpty ? "（没有，出门时不会动它们）" : listening.joined(separator: "、"))")
         print("  Time Machine：\(TimeMachineControl().isEnabledSync().map { $0 ? "开" : "关" } ?? "未知")")
         print("  helper 已安装：\(HelperClient().isInstalled)，可连接：\(HelperClient().isReachable())")
+        // 「装了」不等于「是这一版」。旧 helper 会把新参数静默忽略，
+        // 只看文件在不在是查不出来的。
+        let bundled = Bundle.main.url(forResource: "com.headlessknight.helper", withExtension: nil)
+        print("  helper 是当前这版：\(!HelperClient().isStale(bundledBinary: bundled))")
 
         print("\n== 唤醒审计 ==")
         let endedAt = Date()

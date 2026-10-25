@@ -2,7 +2,11 @@ import Foundation
 
 /// The six pmset keys the app snapshots and restores.
 public struct PmsetSnapshot: Codable, Sendable, Equatable {
-    public static let trackedKeys = ["disablesleep", "sleep", "womp", "powernap", "tcpkeepalive", "standby"]
+    /// 快照和恢复的键。顺序就是恢复顺序：`sleep` 先于 `displaysleep`，
+    /// 免得中间出现「显示器比系统先睡得更久」这种 pmset 不认的组合。
+    public static let trackedKeys = [
+        "disablesleep", "sleep", "displaysleep", "womp", "powernap", "tcpkeepalive", "standby"
+    ]
 
     public var values: [String: Int]
 

@@ -23,6 +23,7 @@ struct ScriptedRunner: CommandRunning {
 final class RecordingExecutor: PrivilegedExecuting, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [HelperOperation] = []
+    private var recordedArgs: [(HelperOperation, [String: String])] = []
     private let failure: Error?
 
     init(failure: Error? = nil) {
@@ -33,10 +34,18 @@ final class RecordingExecutor: PrivilegedExecuting, @unchecked Sendable {
         lock.withLock { recorded }
     }
 
+    /// 每次 root 操作的参数。断言「按电源分开写」这类事情时要用。
+    var callsWithArguments: [(HelperOperation, [String: String])] {
+        lock.withLock { recordedArgs }
+    }
+
     var callCount: Int { calls.count }
 
     func perform(_ operation: HelperOperation, arguments: [String: String]) async throws -> HelperResponse {
-        lock.withLock { recorded.append(operation) }
+        lock.withLock {
+            recorded.append(operation)
+            recordedArgs.append((operation, arguments))
+        }
         if let failure { throw failure }
         return HelperResponse.success(id: "1", output: "", intValue: nil)
     }

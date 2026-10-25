@@ -1788,9 +1788,14 @@ public final class AppState: ObservableObject {
 
     /// 报告页被收起（点了别处、切到别的 app）。这一趟已经彻底结束，回首页，
     /// 下次点图标看到的是正常的家，而不是一份旧报告。
+    ///
+    /// `iconState` 必须一起清掉：红点是「有异常」的意思，用户看完了、窗口都关了，
+    /// 图标还挂着红点，等于软件在一直提醒他一件已经处理完的事。
+    /// 2026-10-25 用户原话：「即使已经结束外出模式，依然一个红点出现在菜单栏图标上」。
     public func dismissReportIfNeeded() {
         guard screen == .report, !isBusy else { return }
         screen = .home
+        iconState = .home
         showDetail = false
         report = nil
     }

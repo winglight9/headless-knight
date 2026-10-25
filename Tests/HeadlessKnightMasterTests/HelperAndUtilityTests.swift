@@ -142,3 +142,40 @@ struct PowerSourceReadTests {
         #expect(TimeMachineControl.parseDestinationInfo("") == nil)
     }
 }
+
+// MARK: - 后台服务过期了必须被发现
+
+@Suite("后台服务是不是这一版")
+struct HelperStalenessTests {
+    private func tempFile(_ contents: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hkm-helper-\(UUID().uuidString)")
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @Test("内容一样就是最新的")
+    func sameBinaryIsNotStale() throws {
+        let installed = try tempFile("same")
+        let bundled = try tempFile("same")
+        let client = HelperClient()
+        #expect(!client.isStale(bundledBinary: bundled, installedPath: installed.path))
+    }
+
+    /// 改了 helper 却没换掉旧进程：新参数会被静默忽略，必须报出来。
+    @Test("内容不一样就是过期的")
+    func differentBinaryIsStale() throws {
+        let installed = try tempFile("old")
+        let bundled = try tempFile("new")
+        let client = HelperClient()
+        #expect(client.isStale(bundledBinary: bundled, installedPath: installed.path))
+    }
+
+    @Test("读不到文件就别乱说它过期")
+    func unreadableIsNotStale() throws {
+        let bundled = try tempFile("new")
+        let client = HelperClient()
+        #expect(!client.isStale(bundledBinary: bundled, installedPath: "/tmp/definitely-missing-\(UUID())"))
+        #expect(!client.isStale(bundledBinary: nil, installedPath: bundled.path))
+    }
+}

@@ -964,3 +964,68 @@ struct AwayFlowIconTapRegressionTests {
         #expect(harness.sim.storedReports.count == 1)
     }
 }
+
+// MARK: - 出门要真的让屏幕睡下去
+
+@Suite("出门的电源设置")
+struct AwayPowerTargetTests {
+    /// 用户 2026-10-25 实测：按了下 command 键，两分钟过去键盘灯还亮着。
+    /// 原因是 `sleep 1` 配着插电时的 `displaysleep 0`（永不关屏）——macOS 的系统
+    /// 空闲睡眠不能早于显示器睡眠，屏幕不睡，系统就一直不睡。
+    @Test("必须把显示器睡眠也设短")
+    func setsDisplaySleep() {
+        let target = PowerSettings.awayTargets.first { $0.key == "displaysleep" }
+        #expect(target?.value == 1)
+    }
+
+    /// 顺序不能反：先写 `sleep 1` 而屏幕还是「永不关」，pmset 会给一条
+    /// 「sleep is less than displaysleep」的警告，值可能被系统改回去。
+    @Test("displaysleep 要排在 sleep 前面写")
+    func displaySleepBeforeSystemSleep() {
+        let keys = PowerSettings.awayTargets.map(\.key)
+        guard let display = keys.firstIndex(of: "displaysleep"),
+              let system = keys.firstIndex(of: "sleep") else {
+            Issue.record("awayTargets 里少了 displaysleep 或 sleep")
+            return
+        }
+        #expect(display < system)
+    }
+
+    /// 改过的每一项都要能被快照记住、被恢复写回，否则出门一趟就把用户的
+    /// 「插电永不关屏」永久改成了 1 分钟。
+    @Test("displaysleep 要进快照，而且恢复顺序在 sleep 之后")
+    func trackedAndRestored() {
+        #expect(PmsetSnapshot.trackedKeys.contains("displaysleep"))
+        let keys = PmsetSnapshot.trackedKeys
+        guard let display = keys.firstIndex(of: "displaysleep"),
+              let system = keys.firstIndex(of: "sleep") else {
+            Issue.record("trackedKeys 里少了 displaysleep 或 sleep")
+            return
+        }
+        #expect(system < display)
+    }
+}
+
+// MARK: - 报告关掉之后，红点也要走
+
+@Suite("菜单栏图标状态")
+@MainActor
+struct MenuBarIconStateTests {
+    /// 用户原话：「即使已经结束外出模式，依然一个红点出现在菜单栏图标上」。
+    @Test("关掉报告窗口，红点必须一起消失")
+    @MainActor
+    func dismissingReportClearsAlert() async {
+        let harness = AwayHarness { sim in
+            twoBlockers(sim)
+            // 造一次真实唤醒，让报告带上异常。
+            sim.powerLog = Simulation.log(startingAt: sim.currentDate, sleeps: true, realWake: true)
+        }
+        await harness.runFullTrip()
+        #expect(harness.state.screen == .report)
+        #expect(harness.state.iconState == .alert)
+
+        harness.state.dismissReportIfNeeded()
+        #expect(harness.state.screen == .home)
+        #expect(harness.state.iconState == .home)
+    }
+}

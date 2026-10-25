@@ -82,6 +82,10 @@ public struct PowerSettings: Sendable {
 
         var snapshot = PmsetSnapshot()
         snapshot["sleep"] = intValue(active["sleep"])
+        snapshot["displaysleep"] = intValue(active["displaysleep"])
+        // 电池那套单独记一份：`pmset -a` 会把两套写成同一个值，还原的时候
+        // 得把电池那套再补回去（用户的机器插电 0 = 永不关屏、电池 2）。
+        snapshot["displaysleep_battery"] = intValue(sections["Battery Power"]?["displaysleep"])
         snapshot["womp"] = intValue(active["womp"])
         snapshot["powernap"] = intValue(active["powernap"])
         snapshot["tcpkeepalive"] = intValue(active["tcpkeepalive"])
@@ -116,8 +120,15 @@ public struct PowerSettings: Sendable {
     /// 每一项都是「能不能睡」的关键项，失败必须阻断。传了 `current` 时，已经是
     /// 目标值的键不再重复写——少一次 root 操作就少一次出错的机会。
     /// 出门时要写入的目标值。`standby` 不在里面：它不影响机器被叫醒。
+    ///
+    /// **`displaysleep` 必须在里面，而且要排在 `sleep` 前面。**
+    /// macOS 的系统空闲睡眠不能早于显示器睡眠：`sleep 1` 配 `displaysleep 0`
+    /// （插电时的出厂默认是「永不关屏」）等于什么都没设——屏幕不睡，系统就一直
+    /// 不睡。2026-10-25 13:14 用户实测：按了下 command 键，两分钟过去键盘灯还亮着，
+    /// 一直到插回显示器。`sleep 1` 写进去了，但没人告诉屏幕该睡。
     public static let awayTargets: [(key: String, value: Int)] = [
         ("disablesleep", 0),
+        ("displaysleep", 1),
         ("sleep", 1),
         ("womp", 0),
         ("powernap", 0),
@@ -181,6 +192,19 @@ public struct PowerSettings: Sendable {
             } catch {
                 HKMLog.error("恢复 \(key) 失败：\(error.localizedDescription)")
                 failures.append(FailedItem(title: "恢复 \(key)", error: error, severity: .optional))
+            }
+        }
+        // `displaysleep` 上面已经用 `-a` 写了一遍（插电那套的值），电池那套要单独补。
+        // 不补的话，用户的「用电池 2 分钟关屏」会被永久改成「永不关屏」。
+        if let battery = snapshot["displaysleep_battery"] {
+            do {
+                _ = try await executor.perform(
+                    .pmsetSet,
+                    arguments: ["key": "displaysleep", "value": "\(battery)", "scope": "b"]
+                )
+            } catch {
+                HKMLog.error("恢复电池的 displaysleep 失败：\(error.localizedDescription)")
+                failures.append(FailedItem(title: "恢复电池关屏时间", error: error, severity: .optional))
             }
         }
         return failures

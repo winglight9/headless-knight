@@ -22,7 +22,8 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var respawnsAfterKill = false
 
     var pmsetValues = PmsetSnapshot(values: [
-        "disablesleep": 1, "sleep": 0, "womp": 1, "powernap": 1, "tcpkeepalive": 1, "standby": 1
+        "disablesleep": 1, "sleep": 0, "displaysleep": 10,
+        "womp": 1, "powernap": 1, "tcpkeepalive": 1, "standby": 1
     ])
     /// 这些键写入时失败。
     var failingPmsetKeys: Set<String> = []

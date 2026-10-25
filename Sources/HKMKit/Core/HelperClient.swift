@@ -15,6 +15,24 @@ public struct HelperClient: Sendable {
             && FileManager.default.fileExists(atPath: HelperPaths.plistPath)
     }
 
+    /// 装着的后台服务和 App 里带的这份是不是同一个二进制。
+    ///
+    /// 改了 helper 的参数却还在跑旧进程，新参数会被**静默忽略**——2026-10-25 就差点
+    /// 这样把用户的「用电池 2 分钟关屏」永久改成「永不关屏」：App 以为自己在按电源
+    /// 分开还原，旧 helper 只管 `-a`。
+    ///
+    /// helper 以 root 运行，只能请用户重新授权一次才能换掉，所以这个判断必须准。
+    /// 比对的是文件内容（`swift build` 对同一份源码是确定的，实测两次构建哈希一致），
+    /// 不是签名——ad-hoc 签名每次打包都会变。
+    public func isStale(bundledBinary: URL?, installedPath: String = HelperPaths.binaryPath) -> Bool {
+        guard let bundledBinary else { return false }
+        guard let installed = try? Data(contentsOf: URL(fileURLWithPath: installedPath)),
+              let bundled = try? Data(contentsOf: bundledBinary) else {
+            return false
+        }
+        return installed != bundled
+    }
+
     public func isReachable() -> Bool {
         guard let fd = try? connectSocket() else { return false }
         close(fd)
