@@ -134,8 +134,6 @@ public final class AppState: ObservableObject {
     ///   · 无头 MacBook：外接屏消失，冒出一块影子屏 → 基线里那块不见了
     /// 显示器只是休眠（DPMS）时仍然算 online，所以不会误判。
     private var baselineDisplayIDs: [CGDirectDisplayID] = []
-    /// 进拔线页那一刻每块屏的厂商/型号。影子屏会沿用 ID，但认不出 EDID。
-    private var baselineSnapshots: [DisplayWatcher.DisplaySnapshot] = []
     private var countdownPurpose: CountdownPurpose = .none
     private var didNotifyReturn = false
     private var didMarkDetached = false
@@ -969,9 +967,12 @@ public final class AppState: ObservableObject {
         // 用户什么都没拔也会被判成「拔线了」：2026-10-25 11:47:17 就是这么来的——
         // 基线 [2, 1] 里那块内建屏一消失，软件立刻倒计时、连叫三次睡眠、然后报
         // 「还没能睡着」，而那一刻用户正坐在电脑前，外接屏好端端插着。
-        baselineSnapshots = deps.displays.displaySnapshots().filter { !$0.builtin }
-        let externalIDs = Set(baselineSnapshots.map(\.id))
-        baselineDisplayIDs = deps.displays.onlineDisplayIDs().filter { externalIDs.contains($0) }
+        // 基线只记**外接的真显示器**：内建屏随手合盖，虚拟屏（MacHead、UU 远程
+        // 建的，或者拔线后系统留的空壳）根本不是用户眼前的屏，都不该进基线——
+        // 它们重建时 ID 会变，进了基线就会误判成「拔线」。
+        baselineDisplayIDs = deps.displays.displaySnapshots()
+            .filter { $0.isRealDisplay && !$0.builtin }
+            .map(\.id)
         displaysDetached = isDisplayDetached()
         HKMLog.info("进入拔线页：当前显示器 \(displayCount) 个，基线 \(baselineDisplayIDs)（\(deps.displays.describeDisplays())），主屏 \(deps.displays.mainDisplayID())")
         deps.displays.setHandler { [weak self] count in
@@ -989,29 +990,29 @@ public final class AppState: ObservableObject {
 
     /// 用户让我拔的那块屏，现在还在不在。
     ///
-    /// 只看 `online`，不看 `active`：显示器休眠（DPMS）时 active 会变 false 但
-    /// online 仍然是 true，那样会把「屏幕自动关了」误判成「线拔了」，把正在用的
-    /// 机器弄睡。
+    /// 两条判据取「或」，任意一条成立就算拔了：
+    ///
+    /// 1. **眼前一块真显示器都不剩。** 排除内建屏（随手合盖、clamshell 下时长时
+    ///    消失），也排除**虚拟屏**——MacHead、UU 远程这类软件会建，拔线之后系统
+    ///    自己也会留一块空壳，它们都读不到真实 EDID。不排除的话日志会写成
+    ///    「判定已拔线：基线 [2] → 现在 #26 1920x1080」，明明还有块屏却说拔了。
+    /// 2. **基线里那些 ID 不在 online 列表里了。** 这条留着是因为有些机型拔线后
+    ///    留下的影子屏会沿用真屏的 ID 和 EDID，第 1 条认不出来。
+    ///
+    /// 只看 `online`，不看 `active`：显示器休眠（DPMS）时 active 变 false 但
+    /// online 仍是 true，那样会把「屏幕自动关了」误判成「线拔了」。
+    ///
+    /// 已知取舍：双屏只拔一块、或者换一块别的屏，第 2 条仍然会判「拔线」。
+    /// 这是「拔了就走」这个产品语义的直接结果——先保证自动睡不会失效。
     private func isDisplayDetached() -> Bool {
+        let snapshots = deps.displays.displaySnapshots()
         let now = deps.displays.onlineDisplayIDs()
-        if now.isEmpty { return true }
         guard !baselineDisplayIDs.isEmpty else {
-            // 进页面时就已经一块屏都没有了，只能退回数量判断。
+            // 进页面时就已经一块外接屏都没有了，只能退回数量判断。
             return deps.displays.activeDisplayCount() == 0
         }
+        if !snapshots.contains(where: { $0.isRealDisplay && !$0.builtin }) { return true }
         if !Set(baselineDisplayIDs).isSubset(of: Set(now)) { return true }
-        // 影子屏有可能沿用同一个 ID，这时只能看它的身份有没有变。
-        // 真屏的厂商/型号是刻在 EDID 里的，显示器休眠、改分辨率都不会变。
-        guard !baselineSnapshots.isEmpty else { return false }
-        let current = Dictionary(
-            deps.displays.displaySnapshots().map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        for base in baselineSnapshots {
-            guard base.vendor != 0 || base.model != 0 else { continue }
-            guard let now = current[base.id] else { return true }
-            if now.vendor != base.vendor || now.model != base.model { return true }
-        }
         return false
     }
 
@@ -1554,7 +1555,6 @@ public final class AppState: ObservableObject {
         sleepRetryTask?.cancel()
         sleepRetryTask = nil
         baselineDisplayIDs = []
-        baselineSnapshots = []
         displaysDetached = false
         // 这一趟到此为止，别让上一轮留下的「没睡着」跟着用户回首页。
         sleepOutcome = .idle

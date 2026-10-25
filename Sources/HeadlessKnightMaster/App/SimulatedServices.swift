@@ -49,6 +49,10 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var mainID: CGDirectDisplayID = 1
     /// 这些 ID 是影子屏：还挂在 online 列表里，但厂商/型号是 0。
     var phantomIDs: Set<CGDirectDisplayID> = []
+    /// 这些 ID 是**虚拟屏**：MacHead、UU 远程这类软件建的，或者拔线之后系统
+    /// 留下的空壳。厂商号/型号是把某个字符串当整数塞进来的乱码。
+    /// 真机上抓到的值是 v1970170734/m1986622068/s0。
+    var virtualIDs: Set<CGDirectDisplayID> = []
     /// 这些 ID 是内建屏。拔线基线只记外接屏，所以这里必须分得出来。
     var builtinIDs: Set<CGDirectDisplayID> = []
     /// 内建屏亮着（笔记本盖子开着）。默认关着，就是「无头」那台机器。
@@ -401,20 +405,26 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
         remoteLoginsValue
     }
 
+    /// 跟真实现一样走 snapshot 的 description，这样「占位」之类的标记在模拟里
+    /// 也能被断言到。
     func describeDisplays() -> String {
-        onlineIDs.isEmpty ? "无" : onlineIDs.map { "#\($0)" }.joined(separator: " / ")
+        let list = displaySnapshots()
+        return list.isEmpty ? "无" : list.map(\.description).joined(separator: " / ")
     }
 
     func displaySnapshots() -> [DisplayWatcher.DisplaySnapshot] {
         onlineIDs.map { id in
-            DisplayWatcher.DisplaySnapshot(
+            let isVirtual = virtualIDs.contains(id)
+            let isPhantom = phantomIDs.contains(id)
+            return DisplayWatcher.DisplaySnapshot(
                 id: id,
                 builtin: builtinIDs.contains(id),
                 active: true,
                 asleep: false,
-                vendor: phantomIDs.contains(id) ? 0 : 0x0610,
-                model: phantomIDs.contains(id) ? 0 : 0xA050,
-                serial: phantomIDs.contains(id) ? 0 : 0x1234,
+                vendor: isVirtual ? 1_970_170_734 : (isPhantom ? 0 : 0x4A8B),
+                model: isVirtual ? 1_986_622_068 : (isPhantom ? 0 : 207),
+                // DIY 便携屏的 EDID 是厂商自己烧的，序列号经常是 0x01010101 甚至 0。
+                serial: isVirtual || isPhantom ? 0 : 0x01010101,
                 width: 2560,
                 height: 1440
             )

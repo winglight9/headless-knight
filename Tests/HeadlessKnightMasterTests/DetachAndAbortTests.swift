@@ -48,6 +48,39 @@ private func waitUntil(timeout: TimeInterval = 5, _ condition: @MainActor () -> 
     }
 }
 
+// MARK: - 什么样的屏算「真显示器」
+
+@Suite("真显示器 vs 虚拟屏")
+struct RealDisplayTests {
+    private func snap(vendor: UInt32, model: UInt32, serial: UInt32) -> DisplayWatcher.DisplaySnapshot {
+        DisplayWatcher.DisplaySnapshot(
+            id: 1, builtin: false, active: true, asleep: false,
+            vendor: vendor, model: model, serial: serial,
+            width: 1920, height: 1200
+        )
+    }
+
+    /// 用户那块是 DIY 便携屏，EDID 是厂商自己烧的，序列号经常是 0x01010101 甚至 0。
+    /// 拿序列号判真假会误伤用户自己那块屏——拔了线也永远不睡。
+    @Test("DIY 便携屏：序列号再怪也是真显示器")
+    func diyDisplayIsReal() {
+        #expect(snap(vendor: 0x4A8B, model: 207, serial: 0x0101_0101).isRealDisplay)
+        #expect(snap(vendor: 0x4A8B, model: 207, serial: 0).isRealDisplay)
+    }
+
+    /// 真机抓到的 #26：v1970170734/m1986622068/s0。
+    @Test("虚拟屏：厂商号/型号是把字符串当整数塞进来的")
+    func virtualDisplayIsNotReal() {
+        #expect(!snap(vendor: 1_970_170_734, model: 1_986_622_068, serial: 0).isRealDisplay)
+    }
+
+    @Test("读不出 EDID：厂商号或型号是 0")
+    func unknownEDIDIsNotReal() {
+        #expect(!snap(vendor: 0, model: 0, serial: 0).isRealDisplay)
+        #expect(!snap(vendor: 0x4A8B, model: 0, serial: 1234).isRealDisplay)
+    }
+}
+
 // MARK: - 拔线判定只看外接屏
 
 @Suite("拔线判定：内建屏不算数")
@@ -109,6 +142,65 @@ struct ExternalDisplayBaselineTests {
         sim.simulateDisplayState(active: 1, online: [2], main: 2)
         await waitUntil(timeout: 1) { state.displaysDetached }
         #expect(state.displaysDetached == false)
+    }
+
+    /// 真机 12:29 那次：拔掉 #2 之后，online 列表里冒出一块 `#26 1920x1080`。
+    /// 用户提供的事实：「machead、UU 远程似乎都会建立虚拟屏」「便携屏一直是 id 2」。
+    ///
+    /// 判定结果本来就没变（「基线里那块不在」那条也能覆盖），这条守的是**日志**：
+    /// 不标出来的话，日志写「判定已拔线：基线 [2] → 现在 #26 1920x1080」，
+    /// 看着像自相矛盾。
+    @Test("拔线后只剩一块虚拟屏：判定照旧，但日志要说清它不是实屏")
+    @MainActor
+    func virtualDisplayOnlyCountsAsDetached() async {
+        let (sim, state) = makeState { sim in
+            sim.onlineIDs = [2, 1]
+            sim.builtinIDs = [1]
+            sim.mainID = 2
+        }
+        state.beginAway()
+        await waitUntil { state.screen == .readyToUnplug }
+
+        // 便携屏拔了，虚拟屏顶上来了。
+        sim.virtualIDs = [26]
+        sim.simulateDisplayState(active: 1, online: [26], main: 26)
+
+        await waitUntil { state.displaysDetached }
+        #expect(state.displaysDetached)
+        #expect(sim.describeDisplays().contains("虚拟"))
+    }
+
+    /// 用户那块是 DIY 便携屏，EDID 是厂商自己烧的：序列号 0x01010101。
+    /// 判「是不是实屏」绝不能看序列号，否则会把自己那块屏当假的排除掉，
+    /// 拔了线也永远不睡。
+    @Test("DIY 便携屏序列号是 0x01010101，也必须算实屏")
+    @MainActor
+    func diyDisplayWithOddSerialIsReal() async {
+        let (sim, state) = makeState { sim in
+            sim.onlineIDs = [2]
+            sim.mainID = 2
+        }
+        state.beginAway()
+        await waitUntil { state.screen == .readyToUnplug }
+        #expect(state.displaysDetached == false)
+        #expect(!sim.describeDisplays().contains("虚拟"))
+    }
+
+    /// 双屏只拔一块：按现在的判据仍然算「拔线」（基线里那块没了）。
+    /// 这是「拔了就走」这个产品语义的直接取舍——先保证自动睡不会失效。
+    @Test("双屏只拔一块，仍然算拔线（已知取舍）")
+    @MainActor
+    func unpluggingOneOfTwoIsStillDetached() async {
+        let (sim, state) = makeState { sim in
+            sim.onlineIDs = [2, 3]
+            sim.mainID = 2
+        }
+        state.beginAway()
+        await waitUntil { state.screen == .readyToUnplug }
+
+        sim.simulateDisplayState(active: 1, online: [3], main: 3)
+        await waitUntil { state.displaysDetached }
+        #expect(state.displaysDetached)
     }
 }
 

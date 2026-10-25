@@ -83,14 +83,34 @@ public final class DisplayWatcher: @unchecked Sendable {
             self.height = height
         }
 
+        /// 这块「屏」是不是用户眼前真实存在的那块显示器。
+        ///
+        /// 不是的常见有三种，共同点都是**读不到真实 EDID**：
+        ///   · 拔线之后系统留下的空壳；
+        ///   · MacHead、UU 远程这类软件建的虚拟屏（用户 2026-10-25 提供的事实：
+        ///     「machead、UU 远程似乎都会建立虚拟屏」）；
+        ///   · 厂商号/型号根本读不出来。
+        ///
+        /// 判据只用厂商号和型号：EDID 的厂商号是 15 位编码（三个字母）、型号是
+        /// 16 位产品码，两者都不可能超过 0xFFFF。真机上抓到的虚拟屏是
+        /// `v1970170734/m1986622068/s0`——把某个字符串当整数塞了进来。
+        ///
+        /// **不看序列号**：DIY 便携屏的 EDID 是厂商自己烧的，序列号经常是
+        /// 0x01010101 甚至 0，拿它判真假会误伤用户自己那块屏。
+        public var isRealDisplay: Bool {
+            vendor != 0 && model != 0 && vendor <= 0xFFFF && model <= 0xFFFF
+        }
+
         public var description: String {
             var parts = ["#\(id)"]
             if builtin { parts.append("内建") }
             if !active { parts.append("非活动") }
             if asleep { parts.append("已休眠") }
             parts.append("\(width)x\(height)")
-            // 拔线之后系统留下的影子屏，vendor/model/serial 通常是 0。
             parts.append("v\(vendor)/m\(model)/s\(serial)")
+            // 标出来，否则日志里「判定已拔线：基线 [2] → 现在 #26 1920x1080」
+            // 读着像自相矛盾：明明还有块屏，凭什么说拔了。
+            if !isRealDisplay { parts.append("虚拟") }
             return parts.joined(separator: " ")
         }
     }
