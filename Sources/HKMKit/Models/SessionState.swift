@@ -67,24 +67,37 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var onboardingDone: Bool
     public var launchAtLogin: Bool
     public var sleepDelaySeconds: Int
-    /// 强力模式：外出期间机器一直醒着（累计满 10 分钟）就强制它再睡一次。
-    /// 默认关——它会在用户其实在电脑前的时候打断工作，必须自己勾。
+    /// 增强模式：外出期间机器连续醒着满 5 分钟，就强制它再睡一次。
+    ///
+    /// **默认开。** 它兜的是「没人管、也没人通知你、但有东西一直挡着不让睡」——
+    /// 用户不需要先看懂这句话才敢开，那本身就是设计失败。
+    /// 老版本 settings.json 里显式存着 `false` 的，照旧是关，不替用户改主意。
     public var strongMode: Bool
+    /// 这台机器物理上没有内建屏（拆掉了）。
+    ///
+    /// macOS 不知道屏幕被拆了，照样报一块「内建屏」上线，EDID 尺寸型号全是正常的
+    /// （真机抓到的假内建屏：1512x982 / v1552 / m41038 / s4251086178，和真的没区别）。
+    /// 程序没法从参数上分辨真假，只能问用户。
+    ///
+    /// 勾上之后，「内建屏在线」不再被当成「人在电脑前」，拔线就走。
+    public var noBuiltinDisplay: Bool
 
     public init(
         onboardingDone: Bool = false,
         launchAtLogin: Bool = false,
         sleepDelaySeconds: Int = 5,
-        strongMode: Bool = false
+        strongMode: Bool = true,
+        noBuiltinDisplay: Bool = false
     ) {
         self.onboardingDone = onboardingDone
         self.launchAtLogin = launchAtLogin
         self.sleepDelaySeconds = sleepDelaySeconds
         self.strongMode = strongMode
+        self.noBuiltinDisplay = noBuiltinDisplay
     }
 
     private enum CodingKeys: String, CodingKey {
-        case onboardingDone, launchAtLogin, sleepDelaySeconds, strongMode
+        case onboardingDone, launchAtLogin, sleepDelaySeconds, strongMode, noBuiltinDisplay
     }
 
     /// 老版本写下的 settings.json 里没有 `strongMode`。合成解码遇到缺字段会直接
@@ -95,7 +108,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         onboardingDone = try container.decodeIfPresent(Bool.self, forKey: .onboardingDone) ?? false
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         sleepDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .sleepDelaySeconds) ?? 5
-        strongMode = try container.decodeIfPresent(Bool.self, forKey: .strongMode) ?? false
+        strongMode = try container.decodeIfPresent(Bool.self, forKey: .strongMode) ?? true
+        noBuiltinDisplay = try container.decodeIfPresent(Bool.self, forKey: .noBuiltinDisplay) ?? false
     }
 
     public static let `default` = AppSettings()

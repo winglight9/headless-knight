@@ -75,7 +75,7 @@ struct AwayView: View {
         }
     }
 
-    /// 强力模式的倒计时。它会在没人管的情况下真的把机器睡掉，所以必须
+    /// 增强模式的倒计时。它会在没人管的情况下真的把机器睡掉，所以必须
     /// 看得见、也必须能取消。
     private func forceSleepBanner(seconds: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {

@@ -64,7 +64,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var powerLogReads = 0
     var bootTimeValue: TimeInterval = 1_000
     var currentDate = Date(timeIntervalSince1970: 1_760_000_000)
-    /// 谁在远程登录。非空时强力模式必须让路。
+    /// 谁在远程登录。非空时增强模式必须让路。
     var remoteLoginsValue: [String] = []
 
     var sleepNowFails: String?

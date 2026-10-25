@@ -4,20 +4,23 @@ import Testing
 @testable import HeadlessKnightMaster
 @testable import HKMKit
 
-// MARK: - 强力模式
+// MARK: - 增强模式
 //
 // 需求原话：「勾选后，当用户唤醒后没有及时点击结束，每隔 10 分钟来一个强制深睡，
 // 弹个消息，倒计时 10s（后来定成 30s）进入强制睡眠。」
 //
 // 这一组守四件事：
 //   1. 只有「连续醒着」累计满阈值才动手——每次唤醒都清零的话，包里反复唤醒就永远不触发
-//   2. 显示器插着 / 有远程登录，一律不许强制睡（那是有人真在用）
+//   2. 显示器插着 / 有远程登录，一律不许强制睡（那是有人真在用）。
+//      **盖子开着不再豁免**：这台机器物理上拆掉了内建屏，那个状态是 MacHead 用
+//      软件伪造的，会一会儿有一会儿没有，不能拿它判「人在不在」。
 //   3. 倒计时要能取消，取消之后重新计时，不是立刻又来
 //   4. 关掉开关就什么都不做
 
 @MainActor
 private func makeStrongHarness(
     strongMode: Bool = true,
+    noBuiltinDisplay: Bool = false,
     interval: Double = 120,
     countdown: Int = 2,
     _ configure: (SimulatedServices) -> Void = { _ in }
@@ -27,7 +30,8 @@ private func makeStrongHarness(
         onboardingDone: true,
         launchAtLogin: false,
         sleepDelaySeconds: 1,
-        strongMode: strongMode
+        strongMode: strongMode,
+        noBuiltinDisplay: noBuiltinDisplay
     )
     sim.powerLog = Simulation.log(startingAt: sim.currentDate, sleeps: true, realWake: false)
     sim.blockers = [
@@ -68,7 +72,7 @@ private func waitFor(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bo
     }
 }
 
-/// 出门、拔线、睡成——强力模式从这里开始接手。
+/// 出门、拔线、睡成——增强模式从这里开始接手。
 @MainActor
 private func enterAway(_ sim: SimulatedServices, _ state: AppState) async {
     state.beginAway()
@@ -102,20 +106,21 @@ struct StrongModeTests {
         #expect(state.sleepOutcome == .slept)
     }
 
-    @Test("盖子开着：人在电脑前，不许强制睡眠")
-    func respectsOpenLid() async {
+    @Test("盖子开着不再是免死金牌：连续醒着满阈值照样睡")
+    func openLidNoLongerExempts() async {
         let (sim, state) = makeStrongHarness(interval: 120, countdown: 2)
         await enterAway(sim, state)
 
-        // 用户掀开笔记本盖子坐回来。内建屏亮着跟「显示器插着」是同一件事，
-        // 以前只查后一条，于是刚坐下的人十分钟后被强制睡掉。
+        // 2026-10-25 之前这里守的是「掀开盖子坐回来就不许强制睡」。用户这台机器
+        // 物理上没有内建屏（拆了），内建屏的在线状态是 MacHead 用软件伪造的，
+        // 会一会儿有一会儿没有。拿它当「人在电脑前」的证据，只会让这个功能永远
+        // 不触发——而「外接屏插着」那条已经守住了真有人在用的情况。
         sim.builtinIsOnline = true
-        for _ in 0..<6 { tick(sim, state, seconds: 30) }
+        for _ in 0..<4 { tick(sim, state, seconds: 30) }
+        await waitFor { sim.sleepNowCalls == 2 }
 
-        #expect(state.forceSleepCountdown == nil)
-        #expect(sim.sleepNowCalls == 1)
-        // 每拍都把计数清零，所以永远攒不满阈值。
-        #expect(state.awakeSeconds < 120)
+        #expect(sim.sleepNowCalls == 2)
+        #expect(state.sleepOutcome == .slept)
     }
 
     @Test("重复唤醒不许把计时清零：每拍只醒 30 秒，四拍之后照样触发")    func repeatedWakesStillFire() async {
@@ -202,7 +207,7 @@ struct StrongModeTests {
         #expect(state.awakeSeconds == 0)
     }
 
-    @Test("结束外出模式：强力模式立刻收手")
+    @Test("结束外出模式：增强模式立刻收手")
     func endingAwayStopsTheWatch() async {
         let (sim, state) = makeStrongHarness(interval: 120, countdown: 2)
         await enterAway(sim, state)
@@ -250,6 +255,47 @@ struct StrongModeTests {
         #expect(decoded.onboardingDone)
         #expect(decoded.launchAtLogin)
         #expect(decoded.sleepDelaySeconds == 30)
-        #expect(decoded.strongMode == false)
+        // 没写这个字段的老设置读成「开」——它现在是默认性格，不是选项。
+        #expect(decoded.strongMode == true)
+    }
+}
+
+// MARK: - 「没有内建屏」开关
+//
+// 拆掉内建屏的机器，macOS 照样报一块 EDID 完全正常的内建屏（真机抓到的：
+// 1512x982 / v1552 / m41038 / s4251086178）。程序分辨不出真假，只能问用户。
+// 不勾的话，拔线那一刻只要那个假信号亮着，自动睡就永远不触发。
+
+@Suite(.serialized)
+@MainActor
+struct NoBuiltinDisplayTests {
+    @Test("勾上之后：内建屏在线也照样拔线就睡")
+    func declaredNoBuiltinStillSleeps() async {
+        let (sim, state) = makeStrongHarness(noBuiltinDisplay: true)
+        // 拆了屏，系统照样认为内建屏在。
+        sim.builtinIsOnline = true
+
+        state.beginAway()
+        await waitFor { state.screen == .readyToUnplug && !state.isBusy }
+        sim.simulatePhantomDisplayAfterUnplug()
+        await waitFor { state.sleepOutcome == .slept }
+
+        #expect(sim.sleepNowCalls >= 1)
+        #expect(state.sleepOutcome == .slept)
+    }
+
+    @Test("没勾的时候：内建屏在线仍然不自动睡（普通笔记本掀开盖子那条保护）")
+    func undeclaredKeepsTheGuard() async {
+        let (sim, state) = makeStrongHarness(noBuiltinDisplay: false)
+        sim.builtinIsOnline = true
+
+        state.beginAway()
+        await waitFor { state.screen == .readyToUnplug && !state.isBusy }
+        sim.simulatePhantomDisplayAfterUnplug()
+
+        // 给它足够时间走完倒计时（1 秒）+ 睡眠请求。
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+        #expect(state.sleepOutcome != .slept)
     }
 }

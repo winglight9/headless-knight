@@ -45,9 +45,9 @@ enum Diagnostics {
             print("    \(line)")
         }
 
-        print("\n== 强力模式 / 远程登录 ==")
+        print("\n== 增强模式 / 远程登录 ==")
         let settings = SessionStore().loadSettings()
-        print("  强力模式：\(settings.strongMode ? "开（醒着满 10 分钟强制睡眠）" : "关")")
+        print("  增强模式：\(settings.strongMode ? "开（连续醒着满 5 分钟强制睡眠）" : "关")")
         let remote = RemoteSessionProbe().remoteLoginsSync()
         print(remote.isEmpty ? "  远程登录：没有" : "  远程登录：\(remote.joined(separator: "；"))")
 

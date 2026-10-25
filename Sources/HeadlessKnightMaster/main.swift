@@ -42,7 +42,7 @@ func runNotifyTest() async -> Int32 {
     print("通知授权状态：\(await notifier.authorizationSummary())")
     let result = await notifier.sendTest(
         title: "通知是通的",
-        body: "强力模式到点时会这样提醒你：30 秒后强制睡眠"
+        body: "增强模式到点时会这样提醒你：30 秒后强制睡眠"
     )
     print("结果：\(result.summary)")
     return result == .shown || result == .delivered ? 0 : 1

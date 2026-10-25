@@ -95,7 +95,7 @@ public final class AppState: ObservableObject {
     /// `pmset -g` 里的 SleepDisabled。首页那句「系统可以正常睡眠」必须基于它，
     /// 而不是想当然。
     @Published public private(set) var sleepDisabled: Bool = false
-    /// 强力模式：外出期间机器已经连续醒着多少秒。真睡过去一次就归零。
+    /// 增强模式：外出期间机器已经连续醒着多少秒。真睡过去一次就归零。
     @Published public private(set) var awakeSeconds: Int = 0
     /// 设置页里如实显示的通知状态。
     @Published public private(set) var notificationStatus: String = "…"
@@ -167,7 +167,7 @@ public final class AppState: ObservableObject {
     /// 只有旧版本留在磁盘上的 `.audited` 记录会走到「还没还原」这一支。
     private var settingsRestoredForReport = false
 
-    // MARK: - 强力模式的状态
+    // MARK: - 增强模式的状态
 
     private var strongModeTask: Task<Void, Never>?
     /// 上一 tick 的时刻。两次之间隔太久说明进程被挂起过（机器睡了）。
@@ -187,7 +187,7 @@ public final class AppState: ObservableObject {
     private var cachedPowerLogAt: Date?
     private var warmPowerLogTask: Task<Void, Never>?
 
-    /// 强力模式的倒计时还剩几秒。没在倒计时就是 nil。
+    /// 增强模式的倒计时还剩几秒。没在倒计时就是 nil。
     public var forceSleepCountdown: Int? {
         countdownPurpose == .forceSleep ? countdown : nil
     }
@@ -195,7 +195,7 @@ public final class AppState: ObservableObject {
     private enum CountdownPurpose {
         case none
         case unplug
-        /// 强力模式的「N 秒后强制睡眠」。
+        /// 增强模式的「N 秒后强制睡眠」。
         case forceSleep
     }
 
@@ -230,7 +230,7 @@ public final class AppState: ObservableObject {
         DurationFormatter.humanized(seconds: awayDurationSeconds)
     }
 
-    /// 强力模式那句「机器已经醒着 X 分钟」。只说我们真的在算的事。
+    /// 增强模式那句「机器已经醒着 X 分钟」。只说我们真的在算的事。
     public var awakeMinutesText: String {
         let minutes = max(0, awakeSeconds) / 60
         if minutes < 1 {
@@ -332,7 +332,7 @@ public final class AppState: ObservableObject {
             bluetoothWasOn = saved.snapshot.bluetoothPower != 0
             startTicker()
             observeDisplaysForReturn()
-            // 重启后接着盯：强力模式不该因为重启就失效。
+            // 重启后接着盯：增强模式不该因为重启就失效。
             startStrongModeWatch()
             // 重启/重开之后用户第一件事就是点图标结束外出。日志现在就读，
             // 等他点的时候不用再对着转圈圈等一秒。
@@ -435,7 +435,7 @@ public final class AppState: ObservableObject {
             guard let self else { return }
             let result = await self.deps.notifier.sendTest(
                 title: "通知是通的",
-                body: "强力模式到点时会这样提醒你：30 秒后强制睡眠"
+                body: "增强模式到点时会这样提醒你：30 秒后强制睡眠"
             )
             self.notificationStatus = result.summary
             HKMLog.info("试一下通知：\(result.summary)")
@@ -1075,7 +1075,11 @@ public final class AppState: ObservableObject {
         let detached = isDisplayDetached()
         // 盖子开着 = 人在电脑前。这是「拔线」之外的第二条线索，以前完全没有：
         // 外接屏拔掉之后基线永远是空的，用户掀开盖子软件也照样认为他还在外面。
-        let userPresent = deps.displays.builtinOnline()
+        //
+        // 但**拆掉内建屏的机器上这个信号是假的**：系统照样报一块 EDID 完全正常的
+        // 内建屏（1512x982 / v1552 / m41038）。用户在设置里声明「没有内建屏」之后，
+        // 就不能再拿它当证据——否则拔了线也永远不睡。
+        let userPresent = !settings.noBuiltinDisplay && deps.displays.builtinOnline()
         displaysDetached = detached
         switch screen {
         case .readyToUnplug:
@@ -1115,7 +1119,10 @@ public final class AppState: ObservableObject {
         // 内建屏亮着 = 笔记本盖子开着 = 人就在电脑前。自动流程在这种时候动手
         // 是灾难：2026-10-25 01:57 用户掀开盖子，软件还在按「拔线了」处理，
         // 连叫了三次睡眠。
-        guard !deps.displays.builtinOnline() else {
+        //
+        // 例外：用户声明过「这台机器没有内建屏」时，这个信号一律不信——拆了屏的
+        // 机器系统照样报内建屏在线，信它就等于拔了线永远不睡。
+        guard settings.noBuiltinDisplay || !deps.displays.builtinOnline() else {
             if !didMarkDetached {
                 narrate("[8/8] 内建屏亮着（盖子开着），不自动睡眠")
             }
@@ -1311,7 +1318,7 @@ public final class AppState: ObservableObject {
         if slept {
             sleepOutcome = .slept
             stopUnplugPoll()
-            // 这一趟真的睡着了，醒着时长从零开始算；强力模式从这里接手。
+            // 这一趟真的睡着了，醒着时长从零开始算；增强模式从这里接手。
             startStrongModeWatch()
             // 验证期间用户可能已经点了「结束外出」，别把界面抢回来。
             if screen == .readyToUnplug || screen == .away {
@@ -1403,18 +1410,31 @@ public final class AppState: ObservableObject {
         abortAway()
     }
 
-    // MARK: - 强力模式
+    // MARK: - 增强模式
 
-    /// 强力模式开关。只在设置页里改。
+    /// 增强模式开关。只在设置页里改。
     public func toggleStrongMode() {
         settings.strongMode.toggle()
         try? deps.store.saveSettings(settings)
-        HKMLog.info("强力模式：\(settings.strongMode ? "开" : "关")")
+        HKMLog.info("增强模式：\(settings.strongMode ? "开" : "关")")
         if settings.strongMode {
             startStrongModeWatch()
         } else {
             stopStrongModeWatch()
         }
+    }
+
+    /// 「这台机器没有内建屏」。勾上之后「内建屏在线」不再被当成「人在电脑前」。
+    ///
+    /// 拆了屏的机器，macOS 照样报一块 EDID 完全正常的内建屏，程序分辨不出真假，
+    /// 只能问用户。不勾的话，拔线那一刻只要那个假信号亮着，自动睡就不会触发。
+    public func toggleNoBuiltinDisplay() {
+        settings.noBuiltinDisplay.toggle()
+        try? deps.store.saveSettings(settings)
+        HKMLog.info("没有内建屏：\(settings.noBuiltinDisplay ? "开" : "关")")
+        // 开关一改，「人在不在」的判断就变了，立刻按当前显示器状态重算一遍——
+        // 否则要等下一次显示器变化，而他可能已经拔完线走了。
+        handleDisplayChange(deps.displays.activeDisplayCount())
     }
 
     /// 盯着「机器是不是一直醒着」。
@@ -1460,7 +1480,7 @@ public final class AppState: ObservableObject {
         if delta > max(1, timing.sleepGapSeconds) {
             // 进程被挂起过 = 机器真的睡了。醒着时长从头开始。
             if awakeAccumulated > 0 {
-                HKMLog.info("强力模式：机器睡过一觉，醒着时长清零")
+                HKMLog.info("增强模式：机器睡过一觉，醒着时长清零")
             }
             awakeAccumulated = 0
             awakeSeconds = 0
@@ -1481,20 +1501,20 @@ public final class AppState: ObservableObject {
 
         // 显示器插着 = 人就在电脑前。这时候强制睡眠是灾难，直接放行。
         guard displaysDetached else {
-            HKMLog.info("强力模式：显示器插着，说明人回来了，不强制睡眠")
+            HKMLog.info("增强模式：显示器插着，说明人回来了，不强制睡眠")
             awakeAccumulated = 0
             awakeSeconds = 0
             return
         }
 
-        // 盖子开着同一条铁律。内建屏亮着就说明人正对着这台机器，跟「显示器插着」
-        // 是同一件事的两种形态。以前只查前一条，掀开盖子的人会被强制睡掉。
-        guard !deps.displays.builtinOnline() else {
-            HKMLog.info("强力模式：盖子开着，人在电脑前，不强制睡眠")
-            awakeAccumulated = 0
-            awakeSeconds = 0
-            return
-        }
+        // 这里原本还有一道「内建屏在线就放行」（盖子开着 = 人在电脑前）。
+        // 2026-10-25 删掉：用户这台是**物理拆掉内建屏**的残骸，内建屏的在线状态
+        // 是 MacHead 用软件伪造出来的，会一会儿有一会儿没有，拿它判「人在不在」
+        // 只会乱放行。而且这道门跟「连续醒着 5 分钟」是死结——屏幕亮着就意味着
+        // 盖子开着，永远不会放行，这个功能等于不存在。
+        //
+        // 删掉不危险：他没有内建屏，只能用外接屏。外接屏插着上面已经放行了，
+        // 真有人用的时候一定插着屏。
 
         // `who` 是同步子进程，放到后台去问。查的这段时间里可能已经被别的路径
         // 抢先处理掉了，所以回来之后要把状态再验一遍。
@@ -1515,7 +1535,7 @@ public final class AppState: ObservableObject {
         guard remote.isEmpty else {
             guard !didWarnRemoteLogin else { return }
             didWarnRemoteLogin = true
-            HKMLog.info("强力模式：有远程登录（\(remote.joined(separator: "；"))），不强制睡眠")
+            HKMLog.info("增强模式：有远程登录（\(remote.joined(separator: "；"))），不强制睡眠")
             deps.notifier.post(
                 title: "没有强制睡眠",
                 body: "有人正在远程登录这台电脑，怕把对方的工作弄断。"
@@ -1525,13 +1545,15 @@ public final class AppState: ObservableObject {
         didWarnRemoteLogin = false
 
         let seconds = max(1, timing.strongModeCountdownSeconds)
-        HKMLog.info("强力模式：机器已连续醒着 \(Int(awakeAccumulated)) 秒，\(seconds) 秒后强制睡眠")
+        HKMLog.info("增强模式：机器已连续醒着 \(Int(awakeAccumulated)) 秒，\(seconds) 秒后强制睡眠")
         // 计数先归零：倒计时被别的路径取消掉时，不会因为「还超着阈值」下一拍又立刻重来。
         awakeAccumulated = 0
         awakeSeconds = 0
         deps.notifier.post(
             title: "\(seconds) 秒后强制睡眠",
-            body: "外出模式还开着，机器一直醒着。要留在电脑前，就点开无头骑士大师。"
+            // 「要留在电脑前」只对「人回来了」成立。这台机器也常被远程连着用，
+            // 那时候人不在电脑前，却说「留在电脑前」——他看完不知道该干嘛。
+            body: "外出模式还开着，机器一直醒着。不想让它睡，就点开无头骑士大师"
         )
         startCountdown(seconds: seconds, purpose: .forceSleep) { [weak self] in
             self?.runForcedSleep()
@@ -1547,7 +1569,7 @@ public final class AppState: ObservableObject {
         awakeAccumulated = 0
         awakeSeconds = 0
         lastAwakeTick = deps.clock.now
-        HKMLog.info("强力模式：用户点了「这次不睡」，重新计时")
+        HKMLog.info("增强模式：用户点了「这次不睡」，重新计时")
     }
 
     private func runForcedSleep() {
@@ -1557,7 +1579,7 @@ public final class AppState: ObservableObject {
         awakeAccumulated = 0
         awakeSeconds = 0
         lastAwakeTick = deps.clock.now
-        HKMLog.info("强力模式：倒计时结束，强制睡眠")
+        HKMLog.info("增强模式：倒计时结束，强制睡眠")
         Task { await performSleepNow() }
     }
 
@@ -1653,7 +1675,7 @@ public final class AppState: ObservableObject {
         isBusy = true
         isEndingAway = true
         screen = .auditing
-        // 人已经回来了，强力模式立刻收手——统计期间再睡过去会把日志截断。
+        // 人已经回来了，增强模式立刻收手——统计期间再睡过去会把日志截断。
         stopStrongModeWatch()
         await finishAwayNow(state)
         isEndingAway = false

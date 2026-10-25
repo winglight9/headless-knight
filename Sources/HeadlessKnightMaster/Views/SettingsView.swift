@@ -32,10 +32,10 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("强力模式")
+                            Text("增强模式")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text("没结束外出、机器又醒着满 10 分钟，就强制它再睡一次")
+                            Text("机器连续醒着 5 分钟，又没结束外出，就再睡一次")
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -43,6 +43,22 @@ struct SettingsView: View {
                     } trailing: {
                         CapsuleToggle(isOn: state.settings.strongMode) {
                             state.toggleStrongMode()
+                        }
+                    }
+                    HairlineDivider()
+                    SettingsRow {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("没有内建屏")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.ink)
+                            Text("拆掉屏的机器勾上，否则拔了线可能不睡")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.tertiaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } trailing: {
+                        CapsuleToggle(isOn: state.settings.noBuiltinDisplay) {
+                            state.toggleNoBuiltinDisplay()
                         }
                     }
                     HairlineDivider()

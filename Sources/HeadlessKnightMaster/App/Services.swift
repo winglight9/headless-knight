@@ -322,18 +322,21 @@ struct Timing {
     /// 睡眠失败后后台重试的间隔。
     var sleepRetrySeconds: Double = 15.0
 
-    // MARK: - 强力模式
+    // MARK: - 增强模式
 
     /// 外出期间机器**连续醒着**多久之后强制它再睡一次。
     ///
-    /// 10 分钟不是随便定的：外出时 `pmset sleep` 已经被设成 1 分钟，所以机器只要
-    /// 安静下来一分钟就会自己睡回去。还能醒着 10 分钟，说明有东西在持续按住它
-    /// （包里鼠标抖动、某个程序抓着 PreventUserIdleSystemSleep、远程会话）。
-    /// 反过来，间隔再短没有收益，只会放大「误判就打断用户」的概率。
-    var strongModeIntervalSeconds: Double = 600
+    /// 5 分钟不是随便定的：外出时 `pmset sleep` 已经被设成 1 分钟，所以机器只要
+    /// 安静下来一分半就会自己睡回去。还能连续醒着 5 分钟，说明有东西在持续按住它
+    /// （包里反复碰到键盘、某个程序抓着 PreventUserIdleSystemSleep、远程会话）。
+    ///
+    /// **判据只看「醒着」，不看「屏幕亮没亮」。** 用户这台是拆掉内建屏的残骸，
+    /// 内建屏的在线状态是 MacHead 用软件伪造的，会一会儿有一会儿没有，拿它当
+    /// 「亮屏」的依据只会乱报。
+    var strongModeIntervalSeconds: Double = 300
     /// 强制睡眠前的倒计时。通知发出后这么久才动手，给人留出取消的时间。
     var strongModeCountdownSeconds: Int = 30
-    /// 强力模式的检查间隔。也是「怎么发现机器睡过一觉」的粒度。
+    /// 增强模式的检查间隔。也是「怎么发现机器睡过一觉」的粒度。
     var strongModeTickSeconds: Double = 5
     /// 两次检查之间隔了这么久，说明进程被挂起过（机器真的睡了），醒着时长清零。
     var sleepGapSeconds: Double = 60
