@@ -158,7 +158,15 @@ struct ReadyToUnplugView: View {
 
                 // 这个按钮不是「关掉一个弹窗」：它会把已经改掉的设置全部恢复原样。
                 // 所以不能叫「取消」，要直接说清楚它干的是什么。
-                PopupButton(title: "结束外出模式", style: .ghost) {
+                //
+                // 还原要走后台服务改好几项设置，一两秒是常事。这段时间里按钮必须
+                // 当场改口、并且点不动——否则用户以为没反应，会一直点（日志里
+                // 连着六次蓝牙还原就是这么来的）。
+                PopupButton(
+                    title: state.isEndingAway ? "正在恢复设置…" : "结束外出模式",
+                    style: .ghost,
+                    isEnabled: !state.isEndingAway && !state.isBusy
+                ) {
                     state.cancelReadyToUnplug()
                 }
                 .padding(.top, hasProblem || state.displaysDetached ? 14 : 8)

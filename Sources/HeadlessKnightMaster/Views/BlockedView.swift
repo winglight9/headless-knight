@@ -72,7 +72,11 @@ struct BlockedView: View {
                 }
                 .padding(.top, 8)
 
-                PopupButton(title: "算了，恢复原设置", style: .ghost, isEnabled: !state.isBusy) {
+                PopupButton(
+                    title: state.isEndingAway ? "正在恢复设置…" : "算了，恢复原设置",
+                    style: .ghost,
+                    isEnabled: !state.isEndingAway && !state.isBusy
+                ) {
                     state.abortAway()
                 }
                 .padding(.top, 8)

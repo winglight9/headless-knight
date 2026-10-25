@@ -102,8 +102,23 @@ struct StrongModeTests {
         #expect(state.sleepOutcome == .slept)
     }
 
-    @Test("重复唤醒不许把计时清零：每拍只醒 30 秒，四拍之后照样触发")
-    func repeatedWakesStillFire() async {
+    @Test("盖子开着：人在电脑前，不许强制睡眠")
+    func respectsOpenLid() async {
+        let (sim, state) = makeStrongHarness(interval: 120, countdown: 2)
+        await enterAway(sim, state)
+
+        // 用户掀开笔记本盖子坐回来。内建屏亮着跟「显示器插着」是同一件事，
+        // 以前只查后一条，于是刚坐下的人十分钟后被强制睡掉。
+        sim.builtinIsOnline = true
+        for _ in 0..<6 { tick(sim, state, seconds: 30) }
+
+        #expect(state.forceSleepCountdown == nil)
+        #expect(sim.sleepNowCalls == 1)
+        // 每拍都把计数清零，所以永远攒不满阈值。
+        #expect(state.awakeSeconds < 120)
+    }
+
+    @Test("重复唤醒不许把计时清零：每拍只醒 30 秒，四拍之后照样触发")    func repeatedWakesStillFire() async {
         let (sim, state) = makeStrongHarness(interval: 120, countdown: 2)
         await enterAway(sim, state)
 

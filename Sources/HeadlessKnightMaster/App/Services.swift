@@ -288,7 +288,13 @@ struct Timing {
     /// 再快就是无意义的 `pmset -g assertions` 空转，再慢用户会以为它没反应。
     var detectPollSeconds: Double = 1.5
     /// 请求睡眠后等多久再读日志确认。机器真睡了的话这段时间是在挂起中过去的。
-    var sleepVerifySeconds: Double = 4.0
+    ///
+    /// 10 秒不是随便定的：`pmset sleepnow` 到真正「Entering Sleep」通常要四五秒
+    /// （2026-10-25 10:47 那次是 5 秒）。以前是 4 秒——窗口在机器睡下去之前就关了，
+    /// 于是判「没睡」，可紧接着机器就睡了。
+    /// 等待窗口拉长在成功这一侧是零成本：真睡了的话进程是冻结着过去的，醒来
+    /// 一看时钟跳了几分钟，立刻就知道；只有真的没睡才会实打实等满这 10 秒。
+    var sleepVerifySeconds: Double = 10.0
     /// 「可以拔线了」这一页的兜底轮询间隔。事件回调会漏，轮询不会。
     var unplugPollSeconds: Double = 1.0
     /// 睡眠失败后后台重试的间隔。

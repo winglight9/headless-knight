@@ -151,6 +151,16 @@ public final class AppState: ObservableObject {
     /// 早就跳过去了。跳了超过这个数就不必再看任何日志——这是最硬的证据，
     /// 而且不依赖 `pmset -g log` 能不能读出来。
     private static let suspendProofSeconds: TimeInterval = 60
+    /// 每一趟外出一个编号。用户点「结束外出」就 +1。
+    ///
+    /// 后台重试睡眠是个长任务：它可能正卡在读日志里，此时用户点了结束、机器已经
+    /// 还原好、界面回到首页——然后这个还在跑的验证醒来，把 `screen` 又改成
+    /// `readyToUnplug`、`iconState` 改成 alert，**把用户拽回「还没能睡着」那一页**。
+    /// 2026-10-25 11:48 就是这样：用户连点六次结束，每次都被拽回来，看着像按钮
+    /// 坏了（日志里是六次重复的蓝牙还原）。带回编号，过期的一律收手。
+    private var awayGeneration = 0
+    /// 「结束外出」正在还原设置。按钮当场变成不可点，不然用户会一直点。
+    @Published public private(set) var isEndingAway = false
     /// 扫描本身失败时留一条记录，报告里要能看出这次没检查过。
     private var scanIssue: FailedItem?
     /// 当前这份报告对应的那一趟，设置是不是已经还原过了。
@@ -953,8 +963,15 @@ public final class AppState: ObservableObject {
         didPostSleepFailure = false
         awaitingDisplayReturnForRetry = false
         displayCount = deps.displays.activeDisplayCount()
-        baselineDisplayIDs = deps.displays.onlineDisplayIDs()
-        baselineSnapshots = deps.displays.displaySnapshots()
+        // 基线只记**外接**屏。
+        //
+        // 内建屏会随手合盖、被系统回收、在 clamshell 下时长时消失，把它算进基线，
+        // 用户什么都没拔也会被判成「拔线了」：2026-10-25 11:47:17 就是这么来的——
+        // 基线 [2, 1] 里那块内建屏一消失，软件立刻倒计时、连叫三次睡眠、然后报
+        // 「还没能睡着」，而那一刻用户正坐在电脑前，外接屏好端端插着。
+        baselineSnapshots = deps.displays.displaySnapshots().filter { !$0.builtin }
+        let externalIDs = Set(baselineSnapshots.map(\.id))
+        baselineDisplayIDs = deps.displays.onlineDisplayIDs().filter { externalIDs.contains($0) }
         displaysDetached = isDisplayDetached()
         HKMLog.info("进入拔线页：当前显示器 \(displayCount) 个，基线 \(baselineDisplayIDs)（\(deps.displays.describeDisplays())），主屏 \(deps.displays.mainDisplayID())")
         deps.displays.setHandler { [weak self] count in
@@ -1101,7 +1118,7 @@ public final class AppState: ObservableObject {
 
     /// 「再试一次睡眠」：用户在拔线页上手动点。
     public func retrySleep() {
-        guard !isBusy else { return }
+        guard !isBusy, !isEndingAway else { return }
         isBusy = true
         Task {
             await performSleepNow()
@@ -1122,6 +1139,9 @@ public final class AppState: ObservableObject {
         guard sleepOutcome != .requesting else { return }
         sleepOutcome = .requesting
         errorMessage = nil
+        // 这一轮属于哪一趟外出。中途用户点了「结束」，编号就变了，下面每一步
+        // 回来都要对一遍——过期的验证不许再改 sleepOutcome 和 screen。
+        let generation = awayGeneration
 
         // 记下「我们叫它睡了」的时刻，回来才知道它到底睡没睡。
         let requestedAt = deps.clock.now
@@ -1146,6 +1166,12 @@ public final class AppState: ObservableObject {
         let maxAttempts = displayStillAttached ? 1 : 3
 
         for attempt in 1...maxAttempts {
+            // 机器睡下去的那几分钟里，用户完全可能已经点了「结束外出」。
+            // 醒过来先确认这一趟还算数，不算就别动界面。
+            guard generation == awayGeneration else {
+                HKMLog.info("这一趟外出已经结束，放弃睡眠验证（第 \(attempt) 次请求后）")
+                return
+            }
             if attempt > 1 {
                 // 拔掉显示器的那一刻 WindowServer 会临时抓一个 PreventSystemSleep，
                 // 几秒后自己放掉。第一次叫不醒多半就是它，等一下再叫一次就好。
@@ -1182,14 +1208,35 @@ public final class AppState: ObservableObject {
             // 第一证据：墙上时钟跳了多远。跳得比「该等的时间」多出 60 秒以上，
             // 说明进程被冻结过 = 机器真的睡了。这一条不需要读任何日志，
             // 2026-10-25 那次就是靠它才对得上的：日志读不出来，但时间跳了 96 分钟。
+            let proofThreshold = max(0, timing.sleepVerifySeconds) + Self.suspendProofSeconds
             let elapsed = deps.clock.now.timeIntervalSince(attemptStartedAt)
-            if elapsed >= max(0, timing.sleepVerifySeconds) + Self.suspendProofSeconds {
+            HKMLog.info("验证第 \(attempt) 次：等待窗口过去 \(Int(elapsed)) 秒（判定阈值 \(Int(proofThreshold)) 秒）")
+            if elapsed >= proofThreshold {
                 slept = true
                 HKMLog.info("进程被挂起 \(Int(elapsed)) 秒 → 机器确实睡了（第 \(attempt) 次请求）")
                 break
             }
 
-            switch await deps.power.sleepEvidence(since: attemptStartedAt) {
+            let evidence = await deps.power.sleepEvidence(since: attemptStartedAt)
+
+            // 时钟要再看一次，而且这一次才是关键。
+            //
+            // `sleepnow` 之后机器通常要四五秒才真正睡下去，而读电源日志本身就要几秒。
+            // 2026-10-25 10:47 那次：请求在 10:47:25，机器 10:47:30 才进睡眠，可
+            // 4 秒的等待窗口在 10:47:30 就到点了——elapsed 只有 4 秒，判「没睡」，
+            // 接着去读日志，进程在睡眠中被冻了四分半，醒来时把那条已经过期的结论
+            // 写进日志，还弹了一条「没能进入睡眠」。真正睡了 271 秒的事实被丢掉了。
+            //
+            // 所以：读完证据、回到这里，再把时钟对一遍。跳过的这段旅程，只有
+            // 挂起能解释。
+            let elapsedAfterEvidence = deps.clock.now.timeIntervalSince(attemptStartedAt)
+            if elapsedAfterEvidence >= proofThreshold {
+                slept = true
+                HKMLog.info("进程被挂起 \(Int(elapsedAfterEvidence)) 秒（读取睡眠证据期间）→ 机器确实睡了（第 \(attempt) 次请求）")
+                break
+            }
+
+            switch evidence {
             case .slept:
                 slept = true
                 HKMLog.info("确认已进入睡眠（第 \(attempt) 次请求）")
@@ -1207,6 +1254,13 @@ public final class AppState: ObservableObject {
                 HKMLog.error("第 \(attempt) 次请求后拿不到睡眠证据（读不到电源日志）")
             }
             if slept { break }
+        }
+
+        // 睡了很久才醒的情况：这一趟可能早就被用户结束了。绝不能再把界面
+        // 拽回「还没能睡着」，也不能为一份已经作废的外出发通知。
+        guard generation == awayGeneration else {
+            HKMLog.info("这一趟外出已经结束，睡眠验证结果作废（\(slept ? "其实睡着了" : "没睡着")）")
+            return
         }
 
         if slept {
@@ -1375,6 +1429,15 @@ public final class AppState: ObservableObject {
             return
         }
 
+        // 盖子开着同一条铁律。内建屏亮着就说明人正对着这台机器，跟「显示器插着」
+        // 是同一件事的两种形态。以前只查前一条，掀开盖子的人会被强制睡掉。
+        guard !deps.displays.builtinOnline() else {
+            HKMLog.info("强力模式：盖子开着，人在电脑前，不强制睡眠")
+            awakeAccumulated = 0
+            awakeSeconds = 0
+            return
+        }
+
         // `who` 是同步子进程，放到后台去问。查的这段时间里可能已经被别的路径
         // 抢先处理掉了，所以回来之后要把状态再验一遍。
         forcedSleepCheckInFlight = true
@@ -1445,6 +1508,15 @@ public final class AppState: ObservableObject {
     /// 阻塞页必须有这条路，否则用户一旦点了「开始外出模式」就再也回不去——
     /// 设置已经被改了，`beginAway` 又因为 `phase == .away` 拒绝重跑。
     public func abortAway() {
+        // 用户着急的时候会连点。以前每一下都从头开始还原（日志里六次蓝牙还原），
+        // 越点越慢，看着就像按钮坏了。
+        guard !isEndingAway else {
+            HKMLog.info("正在还原设置，忽略重复点击")
+            return
+        }
+        // 编号一变，正在跑的睡眠验证就作废，不许再把界面拽回拔线页。
+        awayGeneration &+= 1
+        isEndingAway = true
         cancelCountdown()
         unplugCountdown = nil
         stopUnplugPoll()
@@ -1454,8 +1526,14 @@ public final class AppState: ObservableObject {
         baselineDisplayIDs = []
         baselineSnapshots = []
         displaysDetached = false
+        // 这一趟到此为止，别让上一轮留下的「没睡着」跟着用户回首页。
+        sleepOutcome = .idle
+        errorMessage = nil
         deps.displays.stop()
-        Task { await restoreAndReturnHome() }
+        Task { [weak self] in
+            await self?.restoreAndReturnHome()
+            self?.isEndingAway = false
+        }
     }
 
     func restoreAndReturnHome() async {
@@ -1513,11 +1591,15 @@ public final class AppState: ObservableObject {
 
     public func finishAway() async {
         guard let state = session, state.phase == .away, !isBusy else { return }
+        // 同理：这一趟结束了，后台那条重试通道作废。
+        awayGeneration &+= 1
         isBusy = true
+        isEndingAway = true
         screen = .auditing
         // 人已经回来了，强力模式立刻收手——统计期间再睡过去会把日志截断。
         stopStrongModeWatch()
         await finishAwayNow(state)
+        isEndingAway = false
     }
 
     /// 审计 + 还原设置 + 出报告。调用方负责置位 `isBusy` 和切到 `auditing`，

@@ -48,7 +48,11 @@ struct AwayView: View {
                 .padding(.top, 28)
                 .padding(.bottom, 20)
 
-                PopupButton(title: "结束外出模式", style: .ghost, isEnabled: !state.isBusy) {
+                PopupButton(
+                    title: state.isEndingAway ? "正在恢复设置…" : "结束外出模式",
+                    style: .ghost,
+                    isEnabled: !state.isBusy && !state.isEndingAway
+                ) {
                     Task { await state.finishAway() }
                 }
 

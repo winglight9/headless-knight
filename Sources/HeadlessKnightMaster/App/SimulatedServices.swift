@@ -49,6 +49,8 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var mainID: CGDirectDisplayID = 1
     /// 这些 ID 是影子屏：还挂在 online 列表里，但厂商/型号是 0。
     var phantomIDs: Set<CGDirectDisplayID> = []
+    /// 这些 ID 是内建屏。拔线基线只记外接屏，所以这里必须分得出来。
+    var builtinIDs: Set<CGDirectDisplayID> = []
     /// 内建屏亮着（笔记本盖子开着）。默认关着，就是「无头」那台机器。
     var builtinIsOnline = false
 
@@ -257,8 +259,19 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     /// 系统到底睡没睡。`sleepSucceeds = false` 用来复现「叫了但没睡」。
     func sleepEvidence(since: Date) async -> PowerSettings.SleepEvidence {
-        sleepSucceeds ? .slept : sleepEvidenceValue
+        // 读电源日志本身要几秒，机器可能就在这几秒里睡过去了。2026-10-25 10:47
+        // 的误报正是这么发生的：判完「没睡」去读日志，进程被冻了四分半。
+        if advanceClockOnSleepEvidence > 0 {
+            advanceClock(by: advanceClockOnSleepEvidence)
+        }
+        onSleepEvidence?()
+        return sleepSucceeds ? .slept : sleepEvidenceValue
     }
+
+    /// 读证据这段里时间往前跳多少秒（复现「读日志期间机器睡着了」）。
+    var advanceClockOnSleepEvidence: TimeInterval = 0
+    /// 读证据这一刻插一脚，用来复现「用户正好在这时点了结束」。
+    var onSleepEvidence: (() -> Void)?
 
     func systemSleepBlockers() async -> [String] {
         sleepBlockers
@@ -396,7 +409,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
         onlineIDs.map { id in
             DisplayWatcher.DisplaySnapshot(
                 id: id,
-                builtin: false,
+                builtin: builtinIDs.contains(id),
                 active: true,
                 asleep: false,
                 vendor: phantomIDs.contains(id) ? 0 : 0x0610,
