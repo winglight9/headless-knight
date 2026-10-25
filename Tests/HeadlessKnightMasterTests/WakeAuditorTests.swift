@@ -225,3 +225,58 @@ struct WakeAuditorAuditTests {
         #expect(result.realWakeCount == 0)
     }
 }
+
+// MARK: - 拔线附近那次唤醒到底算谁的
+
+/// 2026-10-25 13:00 那次真机现场：拔线 → 25 秒后用户碰了下键盘（键盘灯亮）→
+/// 机器醒着耗了 2 分 15 秒 → 又自己睡回去 → 插线结束。
+/// 报告当时写的是「很干净」，因为「距拔线 ±60 秒」那条规则把这次唤醒吞掉了。
+@Suite("拔线附近的唤醒")
+struct DetachWindowTests {
+    private let startedAt = date("2026-10-25 12:58:16 +0800")
+    private let endedAt = date("2026-10-25 13:03:09 +0800")
+    private let detachedAt = date("2026-10-25 12:58:24 +0800")
+
+    private let log = """
+    2026-10-25 12:58:32 +0800 Sleep               \tEntering Sleep state due to 'Software Sleep pid=90247':TCPKeepAlive=disabled Using Batt (Charge:100%) 41 secs
+    2026-10-25 12:58:49 +0800 Wake                \tWake from Deep Idle [CDNVA] : due to smc.70070000 trackpadkeyboard SMC.OutboxNotEmpty/HID Activity Using BATT (Charge:100%)
+    2026-10-25 13:01:04 +0800 Sleep               \tEntering Sleep state due to 'Idle Sleep':TCPKeepAlive=disabled Using Batt (Charge:100%) 110 secs
+    2026-10-25 13:02:54 +0800 DarkWake            \tDarkWake from Deep Idle [CDN] : due to smc.70070000 USB-C_plug SMC.OutboxNotEmpty/ Using BATT (Charge:100%) 2 secs
+    2026-10-25 13:02:56 +0800 Wake                \tDarkWake to FullWake from Deep Idle [CDNVA] : due to HID Activity Using BATT (Charge:100%)
+    """
+
+    @Test("拔线 25 秒后碰键盘：必须算一次真实唤醒，不许被「拔线」那条规则吞掉")
+    func keyboardTouchAfterDetachIsCounted() {
+        let result = WakeAuditor().audit(
+            log: log,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            displayDetachedAt: detachedAt
+        )
+        #expect(result.realWakeCount == 1)
+        #expect(result.realWakes.first?.reason.contains("trackpad") == true)
+    }
+
+    @Test("拔线那一瞬系统自己的唤醒（原因里没有用户输入）仍然不算")
+    func systemWakeAtDetachIsStillIgnored() {
+        let systemWake = """
+        2026-10-25 12:58:32 +0800 Sleep               \tEntering Sleep state due to 'Software Sleep':TCPKeepAlive=disabled Using Batt (Charge:100%) 41 secs
+        2026-10-25 12:58:26 +0800 Wake                \tWake from Deep Idle [CDNVA] : due to smc.70070000 SMC.OutboxNotEmpty Using BATT (Charge:100%) 8 secs
+        """
+        let result = WakeAuditor().audit(
+            log: systemWake,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            displayDetachedAt: detachedAt
+        )
+        #expect(result.realWakeCount == 0)
+    }
+
+    @Test("人碰出来的唤醒永远算真的，不管离拔线多近")
+    func userInputIsNeverNoise() {
+        #expect(WakeAuditor.isUserInput("smc.70070000 trackpadkeyboard SMC.OutboxNotEmpty/HID Activity"))
+        #expect(WakeAuditor.isUserInput("UserActivity Assertion"))
+        #expect(!WakeAuditor.isUserInput("smc.70070000 USB-C_plug SMC.OutboxNotEmpty/"))
+        #expect(!WakeAuditor.isUserInput(nil))
+    }
+}

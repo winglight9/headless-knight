@@ -67,8 +67,12 @@ public struct WakeAuditor: Sendable {
     /// A wake this close to the end of the session is the user plugging the
     /// display back in, not a real disturbance.
     public static let tailExclusionWindow: TimeInterval = 120
-    /// Anything within ±60s of the display detach is our own plug event.
-    public static let detachExclusionWindow: TimeInterval = 60
+    /// 拔线那一刻系统会被惊动一下（显示器重新配置），把它算成「被唤醒」是冤的。
+    ///
+    /// 窗口只给 15 秒。以前是 60 秒，结果 2026-10-25 13:00 那次——用户拔线 25 秒后
+    /// 碰了下键盘、机器醒了 2 分 15 秒——被这条规则整个吞掉，报告写成了「很干净」。
+    /// 拔线自身引起的唤醒都在几秒内（真机实测 4 秒），25 秒已经远远超出。
+    public static let detachExclusionWindow: TimeInterval = 15
 
     public init() {}
 
@@ -109,7 +113,14 @@ public struct WakeAuditor: Sendable {
             kind = .darkWakeStart
         case "Wake":
             // "Wake Requests" and other domains sharing the prefix are ignored.
-            if message.hasPrefix("DarkWake to FullWake") || message.hasPrefix("Wake from Normal Sleep") {
+            //
+            // 三种写法都要认。以前只认前两种，`Wake from Deep Idle` 被整行丢掉——
+            // 而它恰恰是「机器从深睡里被直接叫醒」的那一种，最该统计：
+            // 2026-10-25 12:58:49 用户碰了下键盘（键盘灯亮），真机写的就是这一行，
+            // 报告却因为没有这条记录写成了「很干净」。
+            if message.hasPrefix("DarkWake to FullWake")
+                || message.hasPrefix("Wake from Normal Sleep")
+                || message.hasPrefix("Wake from Deep Idle") {
                 kind = .fullWake
             } else {
                 return nil
@@ -165,10 +176,20 @@ public struct WakeAuditor: Sendable {
 
     // MARK: - Classification
 
+    /// 这次唤醒是不是**人碰出来的**（键盘、触控板、鼠标）。
+    ///
+    /// 拔线那一刻系统会自己醒一下（显示器重新配置），那种唤醒的原因里只有
+    /// smc / SMC.OutboxNotEmpty 之类。用户碰键盘才会出现 trackpadkeyboard / HID。
+    /// 两者必须分开：前者是噪音，后者是「人回来了」。
+    public static func isUserInput(_ reason: String?) -> Bool {
+        let lowered = (reason ?? "").lowercased()
+        return lowered.contains("useractivity") || lowered.contains("hid")
+            || lowered.contains("keyboard") || lowered.contains("trackpad")
+    }
+
     public static func classify(reason: String?, durationSeconds: Int?) -> WakeEvent.Kind {
         let lowered = (reason ?? "").lowercased()
-        if lowered.contains("useractivity") || lowered.contains("hid")
-            || lowered.contains("keyboard") || lowered.contains("trackpad") {
+        if isUserInput(reason) {
             return .real
         }
         if let durationSeconds, durationSeconds >= 5 {
@@ -238,11 +259,19 @@ public struct WakeAuditor: Sendable {
             }
         }
 
-        // 规则 2：发生在显示器接入时间戳 ± 60 秒内
+        // 规则 2：拔线那一刻系统自己会被惊动一下，那段窗口内的唤醒不算用户的。
+        //
+        // 但**人碰键盘/触控板产生的唤醒永远不算「拔线引起的」**——那是用户真的
+        // 回来了，必须如实统计。少报一次真实的唤醒，比多报一次系统唤醒更糟：
+        // 这个产品存在的意义就是别骗人。
+        // 2026-10-25 13:00 那次就是被这条吞掉的：拔线 25 秒后碰了下键盘，
+        // 机器醒了 2 分 15 秒，报告却写成「很干净」。
         if let detached = displayDetachedAt {
             var kept: [WakeEvent] = []
             for wake in wakes {
-                if abs(wake.at.timeIntervalSince(detached)) <= WakeAuditor.detachExclusionWindow {
+                let withinDetachWindow =
+                    abs(wake.at.timeIntervalSince(detached)) <= WakeAuditor.detachExclusionWindow
+                if withinDetachWindow, !WakeAuditor.isUserInput(wake.reason) {
                     excluded.append(wake)
                 } else {
                     kept.append(wake)
