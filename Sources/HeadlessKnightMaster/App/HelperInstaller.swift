@@ -34,6 +34,11 @@ enum HelperInstaller {
         guard result.succeeded else {
             throw InstallError.authorizationFailed(result.stderr.isEmpty ? result.stdout : result.stderr)
         }
+        // 脚本跑完不等于服务能用了：最后一步 `launchctl bootstrap` 之后，进程起来、
+        // 建好 socket 还要几百毫秒。不在这里等，紧接着的每一条命令都会失败。
+        guard HelperClient().waitUntilReachable(timeout: 6) else {
+            throw InstallError.authorizationFailed("装好了，但后台服务没能启动起来")
+        }
         HKMLog.info("后台服务安装完成")
     }
 

@@ -305,6 +305,9 @@ public final class AppState: ObservableObject {
             deps.loginItem.rewriteIfNeeded(executablePath: path)
         }
         lastReport = deps.store.lastReport()
+        // App 刚起来的时候后台服务可能还在启动（launchd KeepAlive），先给它一点时间，
+        // 否则会把「还在起」误判成「没装」。
+        deps.helper.waitUntilReady(timeout: 2)
         helperInstalled = deps.helper.isInstalled
         displayCount = deps.displays.activeDisplayCount()
         batteryNow = deps.battery.percentage()

@@ -152,6 +152,14 @@ protocol PowerLogReading {
 protocol HelperManaging {
     var isInstalled: Bool { get }
     func install() throws
+    /// 等后台服务真的能接受连接。安装完、App 刚启动时都要用。
+    @discardableResult
+    func waitUntilReady(timeout: TimeInterval) -> Bool
+}
+
+extension HelperManaging {
+    @discardableResult
+    func waitUntilReady(timeout: TimeInterval = 6) -> Bool { true }
 }
 
 /// 强制睡眠前先确认没人在远程用这台机器。
@@ -226,14 +234,20 @@ struct SystemClockReader: SystemClock {
 struct SystemHelperManager: HelperManaging {
     private let client = HelperClient()
 
-    /// 「装了」不够，还得是**这一版**。后台服务以 root 运行，改了它的参数却没换掉
-    /// 旧进程时，新参数会被静默忽略——看起来一切正常，实际什么都没做。
+    /// 「装了」不够，还得**能连上、而且是这一版**。
     ///
-    /// 判断依据是它 `ping` 时报的协议版本，不是二进制比对：安装脚本会重新签名，
-    /// 字节永远对不上（用户曾陷入「装一次、报一次旧版本」的死循环）。
+    /// 连不上也算没装：文件在但服务挂了，用户需要的正是「装一次」这个入口。
+    /// 以前连不上时宽松返回 true，结果服务明明不可用，界面却连安装按钮都不给。
+    /// （App 刚启动、服务还在起的情况，由 `bootstrap` 先等一下再判断。）
+    ///
+    /// 版本用协议握手，不比二进制：安装脚本会重新签名，字节永远对不上。
     var isInstalled: Bool {
-        guard client.isInstalled else { return false }
-        return client.isCurrentVersion()
+        client.isReady()
+    }
+
+    @discardableResult
+    func waitUntilReady(timeout: TimeInterval = 6) -> Bool {
+        client.waitUntilReachable(timeout: timeout)
     }
 
     func install() throws {

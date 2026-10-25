@@ -37,13 +37,13 @@ public struct HelperClient: Sendable {
         return 1
     }
 
-    /// 装着的后台服务是不是这一版。
+    /// 现在能不能用：文件在、能连上、报的版本也够。
     ///
-    /// 连不上、或者问不出答案，都返回 true（不拦人）——那两种情况有各自的报错路径，
-    /// 不该在这里冒充「版本旧」。只有**明确问出来版本号偏低**才算过期。
-    public func isCurrentVersion() -> Bool {
-        guard isReachable() else { return true }
-        guard let version = reportedProtocolVersion() else { return true }
+    /// 连不上也算「不能用」——文件在但服务挂了，用户需要的正是「装一次」这个入口。
+    public func isReady() -> Bool {
+        guard isInstalled else { return false }
+        guard isReachable() else { return false }
+        guard let version = reportedProtocolVersion() else { return false }
         return version >= HelperProtocol.apiVersion
     }
 
@@ -51,6 +51,20 @@ public struct HelperClient: Sendable {
         guard let fd = try? connectSocket() else { return false }
         close(fd)
         return true
+    }
+
+    /// 等后台服务真的能接受连接。
+    ///
+    /// 安装脚本最后一步是 `launchctl bootstrap`：进程起来、建好 socket 还要几百
+    /// 毫秒。装完立刻发请求，会全部失败——2026-10-25 14:04 就是这样：日志写着
+    /// 「后台服务安装完成」，0.55 秒后六个 pmset 写入全报「后台服务没有安装」。
+    public func waitUntilReachable(timeout: TimeInterval = 6) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if isReachable() { return true }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return false
     }
 
     public func send(_ request: HelperRequest) throws -> HelperResponse {
