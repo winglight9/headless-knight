@@ -411,11 +411,23 @@ public final class AppState: ObservableObject {
     }
 
     /// 「试一下」：让用户当场看见通知长什么样，而不是等到出门在外才发现没弹。
+    ///
+    /// 关键不是「发出去」，是「发完之后去核对」。`add` 对没授权、专注模式、
+    /// 通知样式设成「无」这几种情况全都安静地成功——只看它有没有抛错，
+    /// 就会重演「点了没反应，界面还说已发送」。
     public func sendTestNotification() {
-        deps.notifier.post(
-            title: "通知是通的",
-            body: "强力模式到点时会这样提醒你：30 秒后强制睡眠。"
-        )
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.deps.notifier.sendTest(
+                title: "通知是通的",
+                body: "强力模式到点时会这样提醒你：30 秒后强制睡眠"
+            )
+            self.notificationStatus = result.summary
+            HKMLog.info("试一下通知：\(result.summary)")
+            // 过一会儿回到常驻的授权状态，免得这行字永远停在结果上。
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            self.notificationStatus = await self.deps.notifier.authorizationSummary()
+        }
     }
 
     public func dismissSettings() {

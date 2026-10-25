@@ -7,6 +7,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusController: StatusItemController?
     private var appState: AppState?
 
+    /// 通知代理必须在「启动完成」之前装好，否则第一批通知不会经过它。
+    ///
+    /// 前台应用的通知默认不显示，`willPresent` 是唯一的出口——不装这个代理，
+    /// 用户点「试一下」永远看不到东西。
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        Notifier.installDelegate()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         // 菜单栏软件只能有一个实例：两个实例会并排出现两个图标，而且它们会同时

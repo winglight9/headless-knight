@@ -455,7 +455,24 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
         record("notify \(title)")
     }
 
-    func authorizationSummary() async -> String { "已允许 · 横幅（模拟）" }
+    /// 模拟的授权结果。设成 false 用来复现「用户把通知关掉了」。
+    var notificationAuthorized = true
+    /// 「试一下」得到的答案。默认 `shown`，设成别的可以复现专注模式/无权限。
+    var testResult: NotificationTestResult = .shown
+    private(set) var testNotificationCount = 0
+
+    func sendTest(title: String, body: String) async -> NotificationTestResult {
+        testNotificationCount += 1
+        record("sendTest \(testResult)")
+        if testResult == .shown {
+            notifications.append("\(title)：\(body)")
+        }
+        return testResult
+    }
+
+    func authorizationSummary() async -> String {
+        notificationAuthorized ? "已允许 · 横幅（模拟）" : "被拒绝（模拟）"
+    }
 
     // MARK: - LoginItemManaging
 

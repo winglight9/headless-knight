@@ -95,10 +95,41 @@ protocol StateStoring {
     func updateLastReport(_ report: Report) throws
 }
 
+/// 一条测试通知到底怎么了。
+///
+/// 之所以要分这么细：`UNUserNotificationCenter.add` 只在「请求都没交出去」时报错。
+/// 没授权、专注模式、通知样式设成「无」，它全都安静地成功。设置页说「已发送」
+/// 而屏幕上一片空白，就是这么来的。
+public enum NotificationTestResult: Sendable, Equatable {
+    /// 前台横幅真的出现了（走的是 `willPresent`）。
+    case shown
+    /// 系统收下并投递了，但我们没有经手——app 不在最前台时系统自己弹。
+    /// 实测这种情况下横幅一样会出来，所以措辞是「已发出」，不是「没弹」。
+    case delivered
+    /// 系统收下了，但通知中心里也找不到——被彻底挡掉（多半是专注模式）。
+    case suppressed
+    /// 用户没给权限，连问都没得问。
+    case notAuthorized
+    case failed(String)
+
+    /// 设置页那一行状态。不堆小字，一句说完。
+    public var summary: String {
+        switch self {
+        case .shown: "已弹出 · 就在右上角"
+        case .delivered: "已发出 · 看右上角"
+        case .suppressed: "被系统挡掉了 · 看专注模式"
+        case .notAuthorized: "没给通知权限 · 去系统设置里打开"
+        case .failed(let reason): "发不出去：\(reason)"
+        }
+    }
+}
+
 @MainActor
 protocol Notifying {
     func requestAuthorization()
     func post(title: String, body: String)
+    /// 发一条测试通知，并如实回答「用户到底有没有机会看到」。
+    func sendTest(title: String, body: String) async -> NotificationTestResult
     /// 通知能不能真的弹出来。设置页要如实显示，不能只说「已授权」。
     func authorizationSummary() async -> String
 }

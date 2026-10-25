@@ -33,19 +33,19 @@ func runSimulateAway(arguments: [String]) async -> Int32 {
 let arguments = CommandLine.arguments
 
 /// 用户说过「弹窗一次也没看到过」。与其猜，不如给一条能当场验证的路：
-/// 打一条通知出去，顺便把系统那边记录的授权状态打出来。
+/// 打一条通知出去，然后核对它到底弹没弹。
 @MainActor
 func runNotifyTest() async -> Int32 {
     let notifier = Notifier()
+    // 命令行进程同样要装前台代理，否则从终端跑起来时横幅会被系统吞掉。
+    Notifier.installDelegate()
     print("通知授权状态：\(await notifier.authorizationSummary())")
-    notifier.post(
+    let result = await notifier.sendTest(
         title: "通知是通的",
-        body: "强力模式到点时会这样提醒你：30 秒后强制睡眠。"
+        body: "强力模式到点时会这样提醒你：30 秒后强制睡眠"
     )
-    // 给 UNUserNotificationCenter 一点时间把请求交出去，然后退出。
-    try? await Task.sleep(nanoseconds: 2_000_000_000)
-    print("已提交。没看到横幅的话，去「系统设置 → 通知 → 无头骑士大师」看看是不是被关掉了。")
-    return 0
+    print("结果：\(result.summary)")
+    return result == .shown || result == .delivered ? 0 : 1
 }
 
 if arguments.contains("--notify-test") {
