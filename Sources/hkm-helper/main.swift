@@ -107,7 +107,8 @@ final class HelperDaemon {
     private func execute(_ request: HelperRequest) -> HelperResponse {
         switch request.operation {
         case .ping:
-            return .success(id: request.id, output: "pong")
+            // 带上协议版本：App 靠它判断「装的是不是这一版」。
+            return .success(id: request.id, output: "pong \(HelperProtocol.apiVersion)")
 
         case .pmsetSet:
             guard let key = request.arguments["key"], let value = request.arguments["value"] else {

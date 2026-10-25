@@ -81,8 +81,8 @@ enum Diagnostics {
         print("  helper 已安装：\(HelperClient().isInstalled)，可连接：\(HelperClient().isReachable())")
         // 「装了」不等于「是这一版」。旧 helper 会把新参数静默忽略，
         // 只看文件在不在是查不出来的。
-        let bundled = Bundle.main.url(forResource: "com.headlessknight.helper", withExtension: nil)
-        print("  helper 是当前这版：\(!HelperClient().isStale(bundledBinary: bundled))")
+        let version = HelperClient().reportedProtocolVersion()
+        print("  helper 报的协议版本：\(version.map(String.init) ?? "连不上")（当前需要 \(HelperProtocol.apiVersion)）")
 
         print("\n== 唤醒审计 ==")
         let endedAt = Date()

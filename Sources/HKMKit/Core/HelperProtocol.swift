@@ -1,5 +1,16 @@
 import Foundation
 
+/// 后台服务的协议版本。**改了 helper 的参数或协议就 +1。**
+///
+/// 用版本握手判断「装的是不是这一版」，而不是比对二进制内容：安装脚本里
+/// `codesign --force --sign -` 会给复制过去的那份重新签名，文件直接大 18KB，
+/// 字节比对永远不相等——2026-10-25 用户装一次、报一次「旧版本」，反复卡在这里。
+///
+/// 历史：1 = 最初的版本；2 = `pmsetSet` 支持 `scope`（按电源类型分开写）。
+public enum HelperProtocol {
+    public static let apiVersion = 2
+}
+
 public enum HelperOperation: String, Codable, Sendable, CaseIterable {
     case ping
     case pmsetSet

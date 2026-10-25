@@ -15,22 +15,36 @@ public struct HelperClient: Sendable {
             && FileManager.default.fileExists(atPath: HelperPaths.plistPath)
     }
 
-    /// 装着的后台服务和 App 里带的这份是不是同一个二进制。
+    /// 装着的后台服务报上来的协议版本。
     ///
-    /// 改了 helper 的参数却还在跑旧进程，新参数会被**静默忽略**——2026-10-25 就差点
-    /// 这样把用户的「用电池 2 分钟关屏」永久改成「永不关屏」：App 以为自己在按电源
-    /// 分开还原，旧 helper 只管 `-a`。
+    /// `nil` = 连不上（没法判断）；`1` = 连上了但没报版本（很老的版本）。
     ///
-    /// helper 以 root 运行，只能请用户重新授权一次才能换掉，所以这个判断必须准。
-    /// 比对的是文件内容（`swift build` 对同一份源码是确定的，实测两次构建哈希一致），
-    /// 不是签名——ad-hoc 签名每次打包都会变。
-    public func isStale(bundledBinary: URL?, installedPath: String = HelperPaths.binaryPath) -> Bool {
-        guard let bundledBinary else { return false }
-        guard let installed = try? Data(contentsOf: URL(fileURLWithPath: installedPath)),
-              let bundled = try? Data(contentsOf: bundledBinary) else {
-            return false
+    /// 为什么不用「比对二进制内容」：安装脚本会 `codesign --force --sign -` 重新
+    /// 签名，文件大 18KB，字节比对永远不相等，用户就会陷入「装一次、报一次旧版本」
+    /// 的死循环。协议版本跟签名无关，才是稳的判据。
+    public func reportedProtocolVersion() -> Int? {
+        guard let response = try? send(HelperRequest(operation: .ping)), response.ok else {
+            return nil
         }
-        return installed != bundled
+        return HelperClient.parseProtocolVersion(response.output)
+    }
+
+    /// `"pong 2"` → 2；`"pong"` → 1（很老的版本，那时候还不报版本号）。
+    public static func parseProtocolVersion(_ output: String) -> Int {
+        if let last = output.split(separator: " ").last, let version = Int(last) {
+            return version
+        }
+        return 1
+    }
+
+    /// 装着的后台服务是不是这一版。
+    ///
+    /// 连不上、或者问不出答案，都返回 true（不拦人）——那两种情况有各自的报错路径，
+    /// 不该在这里冒充「版本旧」。只有**明确问出来版本号偏低**才算过期。
+    public func isCurrentVersion() -> Bool {
+        guard isReachable() else { return true }
+        guard let version = reportedProtocolVersion() else { return true }
+        return version >= HelperProtocol.apiVersion
     }
 
     public func isReachable() -> Bool {

@@ -228,17 +228,12 @@ struct SystemHelperManager: HelperManaging {
 
     /// 「装了」不够，还得是**这一版**。后台服务以 root 运行，改了它的参数却没换掉
     /// 旧进程时，新参数会被静默忽略——看起来一切正常，实际什么都没做。
-    /// 这种情况按「没装」处理，让用户重新授权一次。
+    ///
+    /// 判断依据是它 `ping` 时报的协议版本，不是二进制比对：安装脚本会重新签名，
+    /// 字节永远对不上（用户曾陷入「装一次、报一次旧版本」的死循环）。
     var isInstalled: Bool {
         guard client.isInstalled else { return false }
-        guard let bundled = Bundle.main.url(
-            forResource: "com.headlessknight.helper",
-            withExtension: nil
-        ) else {
-            // 不是从 .app 起的（swift run、测试），没得比，按装了算。
-            return true
-        }
-        return !client.isStale(bundledBinary: bundled)
+        return client.isCurrentVersion()
     }
 
     func install() throws {

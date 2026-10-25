@@ -143,39 +143,28 @@ struct PowerSourceReadTests {
     }
 }
 
-// MARK: - 后台服务过期了必须被发现
+// MARK: - 后台服务是不是这一版
 
-@Suite("后台服务是不是这一版")
-struct HelperStalenessTests {
-    private func tempFile(_ contents: String) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("hkm-helper-\(UUID().uuidString)")
-        try contents.write(to: url, atomically: true, encoding: .utf8)
-        return url
+/// 2026-10-25 用户掉进的死循环：装一次 → 报「旧版本」→ 再装 → 还报。
+///
+/// 根因是拿**二进制内容**当判据，而安装脚本会 `codesign --force --sign -` 重新
+/// 签名，装到 /Library 的那份比 App 里的大 18KB，字节永远对不上。现在改成问它
+/// 自己报的协议版本，跟签名无关。
+@Suite("后台服务的协议版本")
+struct HelperVersionTests {
+    @Test("新版本会报号")
+    func parsesVersionedPong() {
+        #expect(HelperClient.parseProtocolVersion("pong 2") == 2)
+        #expect(HelperClient.parseProtocolVersion("pong 7") == 7)
     }
 
-    @Test("内容一样就是最新的")
-    func sameBinaryIsNotStale() throws {
-        let installed = try tempFile("same")
-        let bundled = try tempFile("same")
-        let client = HelperClient()
-        #expect(!client.isStale(bundledBinary: bundled, installedPath: installed.path))
+    @Test("只回 pong 的是很老的版本，按 1 算")
+    func parsesBarePong() {
+        #expect(HelperClient.parseProtocolVersion("pong") == 1)
     }
 
-    /// 改了 helper 却没换掉旧进程：新参数会被静默忽略，必须报出来。
-    @Test("内容不一样就是过期的")
-    func differentBinaryIsStale() throws {
-        let installed = try tempFile("old")
-        let bundled = try tempFile("new")
-        let client = HelperClient()
-        #expect(client.isStale(bundledBinary: bundled, installedPath: installed.path))
-    }
-
-    @Test("读不到文件就别乱说它过期")
-    func unreadableIsNotStale() throws {
-        let bundled = try tempFile("new")
-        let client = HelperClient()
-        #expect(!client.isStale(bundledBinary: bundled, installedPath: "/tmp/definitely-missing-\(UUID())"))
-        #expect(!client.isStale(bundledBinary: nil, installedPath: bundled.path))
+    @Test("当前协议版本要大于 1，否则「旧版」这条判断永远不成立")
+    func apiVersionIsMeaningful() {
+        #expect(HelperProtocol.apiVersion >= 2)
     }
 }
