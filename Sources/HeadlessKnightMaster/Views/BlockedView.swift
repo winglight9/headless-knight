@@ -10,14 +10,29 @@ struct BlockedView: View {
         return "已经完成的：\n" + state.completedActions.joined(separator: " · ")
     }
 
+    /// 只有「后台服务过期」这一种，说的不是「睡不着」而是「改不回来」。
+    private var isHelperOnlyProblem: Bool {
+        state.criticalFailures.count == 1 && state.criticalFailures.first?.title == "后台服务"
+    }
+
+    private var headline: String {
+        isHelperOnlyProblem ? "后台服务需要更新" : "有 \(state.criticalFailures.count) 项没能完成"
+    }
+
+    private var subtitle: String {
+        isHelperOnlyProblem
+            ? "先更新一次，否则有些设置改不回来"
+            : "现在走的话，电脑可能睡不着"
+    }
+
     var body: some View {
         PopupScaffold(status: .attention, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
-                    Text("有 \(state.criticalFailures.count) 项没能完成")
+                    Text(headline)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    NoteText(text: "现在走的话，电脑可能睡不着")
+                    NoteText(text: subtitle)
                 }
                 .padding(.top, 24)
 

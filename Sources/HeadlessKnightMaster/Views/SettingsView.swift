@@ -64,14 +64,26 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
                     HairlineDivider()
+                    // 红字是「有件事需要你处理」，那就得能点。以前这里只有一个
+                    // Text，用户点了半天以为坏了。
                     SettingsRow {
                         Text("后台服务")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.ink)
                     } trailing: {
-                        Text(state.helperInstalled ? "已安装" : "未安装")
-                            .font(.system(size: 12))
-                            .foregroundStyle(state.helperInstalled ? Theme.green : Theme.red)
+                        if state.helperInstalled {
+                            Text("已安装")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.green)
+                        } else {
+                            Button(action: { state.installHelper() }) {
+                                Text(state.isBusy ? "安装中…" : "未安装 · 点这里安装 ›")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.red)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(state.isBusy)
+                        }
                     }
                     HairlineDivider()
                     SettingsRow {

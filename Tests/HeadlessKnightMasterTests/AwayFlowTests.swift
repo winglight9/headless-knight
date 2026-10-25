@@ -403,10 +403,31 @@ struct AwayFlowCriticalFailureTests {
 
         #expect(harness.state.screen == .blocked)
         #expect(harness.state.failedItems.count == 1)
-        #expect(harness.state.failedItems.first?.detail == "后台服务没有安装")
+        #expect(harness.state.failedItems.first?.title == "后台服务")
         #expect(harness.state.needsHelperInstall)
         // 一条失败就短路，不该把五个键都试一遍（每个都可能等 20 秒超时）。
         #expect(harness.sim.pmsetWrites.isEmpty)
+    }
+
+    /// 阻塞页那个「安装后台服务」以前一直是死的：`installHelperFromBlocked`
+    /// 先把 `isBusy` 置上，而 `installHelper()` 开头就是 `guard !isBusy`，
+    /// 于是点一下直接 return，连密码框都不会弹。
+    ///
+    /// 必须走**公开的那个入口**，调内部函数是绕过了死锁那一步的。
+    @Test("阻塞页的「安装后台服务」真的会去装")
+    func installFromBlockedActuallyRuns() async {
+        let harness = AwayHarness { sim in
+            twoBlockers(sim)
+            sim.helperInstalled = false
+        }
+        await harness.enterAway()
+        #expect(harness.state.screen == .blocked)
+
+        harness.state.installHelperFromBlocked()
+        await AwayHarness.waitUntil(timeout: 2) { harness.sim.helperInstallAttempts == 1 }
+
+        #expect(harness.sim.helperInstallAttempts == 1)
+        #expect(harness.state.helperInstalled)
     }
 
     @Test("装好后端服务后自动重跑整条流程，并保留最初的快照")

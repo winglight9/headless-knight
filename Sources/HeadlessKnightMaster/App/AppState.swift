@@ -369,11 +369,15 @@ public final class AppState: ObservableObject {
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
+        // 只有从引导流程里点进来才往后翻一页。设置页、阻塞页点安装的，装完就留在
+        // 原地——以前不看场景，装完一律跳到引导第 3 页，用户莫名其妙。
+        var wasOnboarding = false
+        if case .onboarding = screen { wasOnboarding = true }
         do {
             try deps.helper.install()
             helperInstalled = deps.helper.isInstalled
             needsHelperInstall = !helperInstalled
-            if helperInstalled {
+            if helperInstalled, wasOnboarding {
                 screen = .onboarding(3)
             }
         } catch {
@@ -488,6 +492,24 @@ public final class AppState: ObservableObject {
         // 已经在跑流程就不要再开一条：以前 isBusy 是在 Task 里才置位，
         // 快速点两下能同时进两个流程。
         guard !isBusy, session?.phase != .away else { return }
+
+        // 后台服务不是这一版：它会把新参数**静默忽略**（比如按电源类型分开还原），
+        // 界面一切正常、实际什么都没做。这比报错糟得多，所以出门前就拦住。
+        // 2026-10-25 现场：改了 helper 的参数，跑的却还是旧进程。
+        helperInstalled = deps.helper.isInstalled
+        guard helperInstalled else {
+            failedItems = [
+                FailedItem(
+                    title: "后台服务",
+                    detail: "装的是旧版本，需要更新一次才能安全地改设置",
+                    severity: .critical
+                )
+            ]
+            needsHelperInstall = true
+            errorMessage = nil
+            screen = .blocked
+            return
+        }
 
         // 上次恢复没做完就先补上：否则这次拍到的「原始设置」是上次改过的值。
         if pendingRestore {
@@ -923,9 +945,11 @@ public final class AppState: ObservableObject {
     }
 
     /// 阻塞页上的「安装后台服务」。
+    ///
+    /// 这里**不能**先把 `isBusy` 置上：`installHelper()` 开头就是 `guard !isBusy`，
+    /// 先置了它会直接 return——这个按钮以前一直是死的，点了毫无反应。
     public func installHelperFromBlocked() {
         guard !isBusy else { return }
-        isBusy = true
         Task { await installHelperFromBlockedNow() }
     }
 
