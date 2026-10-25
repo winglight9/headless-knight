@@ -155,7 +155,7 @@ struct AwayFlowHappyPathTests {
         #expect(harness.sim.pmsetValues["womp"] == 0)
     }
 
-    @Test("显示器还插着就点「让电脑睡眠」：只试一次，别把屏幕闪三下")
+    @Test("显示器还插着就手动让它睡：只试一次，别把屏幕闪三下")
     func manualSleepWithDisplayAttachedTriesOnce() async {
         let harness = AwayHarness { sim in
             twoBlockers(sim)
@@ -177,14 +177,58 @@ struct AwayFlowHappyPathTests {
         // 关键：只请求一次。以前是 1...3，屏幕会连闪三下。
         #expect(harness.sim.sleepNowCalls == 1)
         #expect(harness.state.screen == .readyToUnplug)
-        #expect(harness.state.errorMessage?.contains("显示器还插着") == true)
+        // 人就在屏幕前点的那一下，绝不能反过来教他「拔掉线之后它会自己睡」。
+        #expect(harness.state.errorMessage?.contains("拔掉线") == false)
+        #expect(harness.state.errorMessage?.contains("刚睡下就被叫醒了") == true)
+        // 手动那次不推送：屏幕就在眼前，再弹一条是打扰。
+        #expect(harness.sim.notifications.filter { $0.hasPrefix("没能进入睡眠") }.isEmpty)
         // 没拔线就不会有后台重试，别在文案里许诺「会自动重试」。
         #expect(harness.state.displaysDetached == false)
     }
 
-    @Test("拔线后请求睡眠，状态变成外出中")
-    func unplugTriggersSleep() async {
+    /// 用户说的第二种走法：不拔线，手动让它睡。
+    @Test("不拔线手动睡成：切到「外出中」，显示器照样插着")
+    func manualSleepSucceedsWithoutUnplugging() async {
         let harness = AwayHarness { twoBlockers($0) }
+        await harness.enterAway()
+        #expect(harness.state.screen == .readyToUnplug)
+        #expect(harness.state.displaysDetached == false)
+
+        harness.state.retrySleep()
+        await AwayHarness.waitUntil { harness.state.screen == .away }
+
+        #expect(harness.state.sleepOutcome == .slept)
+        // 线一直插着，人随时动一下鼠标就醒——这是正常的，不是失败。
+        #expect(harness.state.displaysDetached == false)
+    }
+
+    /// 手动那次失败，不能把「拔线自动睡」这条路堵死：
+    /// 用户点过一下没成，然后拔线走人——那时候他看不见界面，只能靠自动。
+    @Test("手动睡失败之后，拔线仍然会自动睡")
+    func manualFailureDoesNotBlockLaterUnplug() async {
+        let harness = AwayHarness { sim in
+            twoBlockers(sim)
+            // 第一次（手动、插着线）失败，之后恢复正常。
+            sim.sleepSucceeds = false
+        }
+        await harness.enterAway()
+        harness.state.retrySleep()
+        await AwayHarness.waitUntil {
+            if case .failed = harness.state.sleepOutcome { return true }
+            return false
+        }
+
+        harness.sim.sleepSucceeds = true
+        // 直接拔线。不能等 `unplug()`——它只等「有结论」，而这时 sleepOutcome
+        // 还停在手动那次的 .failed 上，会立刻返回。
+        harness.sim.simulateDisplayCount(0)
+        await AwayHarness.waitUntil { harness.state.sleepOutcome == .slept }
+        #expect(harness.state.sleepOutcome == .slept)
+        #expect(harness.state.screen == .away)
+    }
+
+    @Test("拔线后请求睡眠，状态变成外出中")
+    func unplugTriggersSleep() async {        let harness = AwayHarness { twoBlockers($0) }
         await harness.enterAway()
         await harness.unplug()
 

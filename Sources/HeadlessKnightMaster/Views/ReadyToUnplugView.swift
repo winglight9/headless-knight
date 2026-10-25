@@ -143,14 +143,13 @@ struct ReadyToUnplugView: View {
                     EmptyView()
                 }
 
-                // 兜底：万一哪台机器的显示器拓扑识别不出来，用户还能直接按一下。
-                // 产品不能因为「自动检测猜错了」就把人卡死在这一页。
+                // 这个产品只有两条走法：拔线就自动睡；不拔线就手动点一下。
                 //
-                // 名字必须写清它是干什么的。以前叫「现在就让电脑睡眠」，用户会当成
-                // 「我想现在睡」去点——可显示器还插着的时候，这一按只会让屏幕黑一下
-                // 又亮回来。它真正的用途是「我拔了，你没发现」。
+                // 这里以前叫「我已经拔线了，让它睡」，那句话自相矛盾——真拔了线，
+                // 面板所在的这块屏也就没了，没人看得见它。用户原话：「拔线了这
+                // 界面就看不到了。哈哈哈」。
                 if !hasProblem, !state.displaysDetached {
-                    PopupButton(title: "我已经拔线了，让它睡", style: .ghost, isEnabled: !state.isBusy) {
+                    PopupButton(title: "不拔线，现在就睡", style: .ghost, isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
                     .padding(.top, 12)

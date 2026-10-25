@@ -1116,13 +1116,21 @@ public final class AppState: ObservableObject {
         Task { await performSleepNow() }
     }
 
-    /// 「再试一次睡眠」：用户在拔线页上手动点。
+    /// 用户手动让电脑睡：拔线页上的「不拔线，现在就睡」，以及失败后的「再睡一次」。
+    ///
+    /// 这个产品只有两种走法，用户说得很清楚：
+    ///   1. 拔线 → 自动睡（用户不需要碰任何东西，事实上他也看不见界面了）
+    ///   2. 不拔线 → 手动点一下让它睡
+    ///
+    /// 以前这里挂的是「我已经拔线了，让它睡」。那句话自相矛盾——真拔了线，
+    /// 面板所在的这块屏就没了，没人看得见它。所以它既不可能是模式 1 的入口，
+    /// 也没说清自己是模式 2。
     public func retrySleep() {
         guard !isBusy, !isEndingAway else { return }
         isBusy = true
-        Task {
-            await performSleepNow()
-            isBusy = false
+        Task { [weak self] in
+            await self?.performSleepNow(fromWatchdog: false, manual: true)
+            self?.isBusy = false
         }
     }
 
@@ -1133,7 +1141,7 @@ public final class AppState: ObservableObject {
     /// `fromWatchdog`：后台重试自己调进来的时候不要再起一个新的看门狗，
     /// 否则 `startSleepRetryWatchdog()` 会把正在跑的那个（也就是它自己）取消掉，
     /// 结果只重试一次就停了。
-    private func performSleepNow(fromWatchdog: Bool) async {
+    private func performSleepNow(fromWatchdog: Bool, manual: Bool = false) async {
         unplugCountdown = nil
         cancelCountdown()
         guard sleepOutcome != .requesting else { return }
@@ -1153,6 +1161,8 @@ public final class AppState: ObservableObject {
         HKMLog.info("请求系统睡眠（当前显示器 \(displayCount) 个）")
 
         var lastReason: String?
+        /// 谁占着系统睡眠。手动睡失败时要用它说清原因。
+        var blockedBy: [String] = []
         var slept = false
         var unverified = false
 
@@ -1162,8 +1172,9 @@ public final class AppState: ObservableObject {
         //
         // 所以这种情况下只试一次：成不成一次就看出来了，第二次只是再闪一下。
         // 真拔了线之后（自动流程）没有屏幕可闪，多试几次才有意义。
+        // 手动点的那一次同理——人就在屏幕前，别让屏幕连闪三下。
         let displayStillAttached = !isDisplayDetached()
-        let maxAttempts = displayStillAttached ? 1 : 3
+        let maxAttempts = (manual || displayStillAttached) ? 1 : 3
 
         for attempt in 1...maxAttempts {
             // 机器睡下去的那几分钟里，用户完全可能已经点了「结束外出」。
@@ -1243,6 +1254,7 @@ public final class AppState: ObservableObject {
             case .awake:
                 unverified = false
                 let holders = await deps.power.systemSleepBlockers()
+                blockedBy = holders
                 lastReason = holders.isEmpty
                     ? "系统没有进入睡眠"
                     : "\(holders.joined(separator: "、")) 占着系统睡眠"
@@ -1288,7 +1300,11 @@ public final class AppState: ObservableObject {
         // 没睡成：绝不切到「外出中」，也绝不说「系统已进入睡眠」。
         let reason = lastReason ?? "系统拒绝了睡眠请求"
         sleepOutcome = unverified ? .unverified(reason: reason) : .failed(reason: reason)
-        awaitingDisplayReturnForRetry = true
+        // 手动那次失败不算「等你重试」——用户随时可能拔线走人，那条自动路径
+        // 不能被这个标记挡住（挡了的话他拔了线也睡不了，而且看不见界面）。
+        if !manual {
+            awaitingDisplayReturnForRetry = true
+        }
         if screen != .auditing && screen != .report {
             screen = .readyToUnplug
             iconState = .alert
@@ -1300,17 +1316,26 @@ public final class AppState: ObservableObject {
             return
         }
         // 「系统没有进入睡眠」这句是循环论证，用户看完还是不知道为什么。
-        // 屏幕还插着的时候原因其实很确定：刚睡下就被屏幕的重新配置拽回来了。
-        errorMessage = displayStillAttached
-            ? "显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡"
-            : "没能让电脑睡着：\(reason)"
+        if manual {
+            // 手动那次人就在屏幕前：要么有程序挡着，要么刚睡下就被惊醒了。
+            // 绝不能让界面去教一个此刻坐在电脑前的人「拔掉线之后它会自己睡」——
+            // 他点的就是「不拔线也睡」。
+            errorMessage = blockedBy.isEmpty
+                ? "刚睡下就被叫醒了。接着显示器的时候，系统很容易被一点动静弄醒"
+                : "\(blockedBy.joined(separator: "、")) 占着系统睡眠，先退出它"
+        } else {
+            errorMessage = displayStillAttached
+                ? "显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡"
+                : "没能让电脑睡着：\(reason)"
+        }
         narrate("→ 睡眠失败：\(reason)")
         // 一趟只提醒一次。以前每失败一轮弹一条，一晚上七条，把真正重要的信息淹了。
-        if !didPostSleepFailure {
+        // 手动那次不弹：人就在屏幕前看着结果，再弹一条纯属打扰。
+        if !manual, !didPostSleepFailure {
             didPostSleepFailure = true
             deps.notifier.post(title: "没能进入睡眠", body: "电脑还醒着：\(reason)")
         }
-        if !fromWatchdog {
+        if !fromWatchdog, !manual {
             startSleepRetryWatchdog()
         }
     }
