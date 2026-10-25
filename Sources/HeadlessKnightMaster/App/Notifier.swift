@@ -106,7 +106,8 @@ public final class Notifier {
         }
         let delivered = await center.deliveredNotifications()
         if delivered.contains(where: { $0.request.identifier == identifier }) {
-            HKMLog.info("测试通知已送达通知中心，但前台没弹")
+            // app 不在最前台时系统自己弹，不经过我们。实测横幅一样会出现。
+            HKMLog.info("测试通知已发出（由系统直接投递）")
             return .delivered
         }
         HKMLog.info("测试通知被系统挡掉了")
