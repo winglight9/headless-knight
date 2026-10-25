@@ -21,6 +21,12 @@ public struct SessionState: Codable, Sendable, Equatable {
     public var timeZoneOffsetMinutes: Int
     public var logAnchor: String
     public var batteryStart: Int?
+    /// 外出期间见过的最低电量。
+    ///
+    /// 只记「开始」和「结束」是不够的：用户回来第一件事往往是插上电源，
+    /// 等他把「结束外出模式」点下去，电池可能已经充回去了。2026-10-25 那趟
+    /// 睡了一夜掉 2%（98%→96%），报告里却因为结束时又充到 98% 写成「没有下降」。
+    public var batteryLow: Int?
     public var bootTimeAtStart: TimeInterval
     public var displayDetachedAt: Date?
     public var snapshot: Snapshot
@@ -34,6 +40,7 @@ public struct SessionState: Codable, Sendable, Equatable {
         timeZoneOffsetMinutes: Int,
         logAnchor: String,
         batteryStart: Int? = nil,
+        batteryLow: Int? = nil,
         bootTimeAtStart: TimeInterval = 0,
         displayDetachedAt: Date? = nil,
         snapshot: Snapshot = Snapshot(),
@@ -45,6 +52,7 @@ public struct SessionState: Codable, Sendable, Equatable {
         self.timeZoneOffsetMinutes = timeZoneOffsetMinutes
         self.logAnchor = logAnchor
         self.batteryStart = batteryStart
+        self.batteryLow = batteryLow ?? batteryStart
         self.bootTimeAtStart = bootTimeAtStart
         self.displayDetachedAt = displayDetachedAt
         self.snapshot = snapshot

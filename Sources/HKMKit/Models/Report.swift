@@ -18,6 +18,9 @@ public struct Report: Codable, Sendable, Equatable {
     public var durationSeconds: Int
     public var batteryStart: Int?
     public var batteryEnd: Int?
+    /// 外出期间的最低电量。用户回来之后常常先插上电源再点「结束」，
+    /// 那时候 `batteryEnd` 已经充回去了，只看首尾会把「掉电」算成 0。
+    public var batteryLow: Int?
     public var sleptAtAll: Bool
     public var darkWakeCount: Int
     public var notificationWakeCount: Int
@@ -32,6 +35,7 @@ public struct Report: Codable, Sendable, Equatable {
         durationSeconds: Int,
         batteryStart: Int? = nil,
         batteryEnd: Int? = nil,
+        batteryLow: Int? = nil,
         sleptAtAll: Bool,
         darkWakeCount: Int,
         notificationWakeCount: Int,
@@ -45,6 +49,7 @@ public struct Report: Codable, Sendable, Equatable {
         self.durationSeconds = durationSeconds
         self.batteryStart = batteryStart
         self.batteryEnd = batteryEnd
+        self.batteryLow = batteryLow
         self.sleptAtAll = sleptAtAll
         self.darkWakeCount = darkWakeCount
         self.notificationWakeCount = notificationWakeCount
@@ -56,9 +61,16 @@ public struct Report: Codable, Sendable, Equatable {
 
     public var backgroundWakeCount: Int { darkWakeCount + notificationWakeCount }
 
+    /// 这一段掉了多少电。
+    ///
+    /// 用「见过的最低电量」而不是「结束时的电量」：用户回来第一件事常常是插电源，
+    /// 等到他点「结束外出模式」，电池早就充回去了。2026-10-25 那趟睡了一夜
+    /// 98% → 96%（掉 2%），结束时已经充回 98%，只看首尾就写成了「没有下降」。
     public var batteryDelta: Int? {
-        guard let start = batteryStart, let end = batteryEnd else { return nil }
-        return start - end
+        guard let start = batteryStart else { return nil }
+        let lowest = [batteryEnd, batteryLow].compactMap { $0 }.min()
+        guard let lowest else { return nil }
+        return start - lowest
     }
 
     public var hasAnomaly: Bool { !sleptAtAll || realWakeCount > 0 }
@@ -76,18 +88,18 @@ public struct Report: Codable, Sendable, Equatable {
 
     public var durationText: String { DurationFormatter.humanized(seconds: durationSeconds) }
 
-    /// "电量 74% · 下降 4%"
+    /// "掉电 2%"
+    ///
+    /// 只说掉了多少。以前写「电量 74% · 下降 4%」，那个 74% 是结束那一刻的电量，
+    /// 而用户回来常常已经插上电源了，这个数字跟他半夜关心的「一夜掉了多少」无关。
     public var batteryText: String {
-        guard let end = batteryEnd else {
-            return "外出期间电量耗尽"
-        }
         guard let delta = batteryDelta else {
-            return "电量 \(end)%"
+            return batteryEnd == nil ? "外出期间电量耗尽" : "电量未知"
         }
         if delta <= 0 {
-            return "电量 \(end)% · 没有下降"
+            return "没有掉电"
         }
-        return "电量 \(end)% · 下降 \(delta)%"
+        return "掉电 \(delta)%"
     }
 
     /// Compact variant used under the headline on the anomaly screen.
@@ -95,7 +107,7 @@ public struct Report: Codable, Sendable, Equatable {
         guard let delta = batteryDelta, delta > 0 else {
             return "共 \(durationText)"
         }
-        return "共 \(durationText) · 下降 \(delta)%"
+        return "共 \(durationText) · 掉电 \(delta)%"
     }
 
     public var firstRealWakeText: String? {

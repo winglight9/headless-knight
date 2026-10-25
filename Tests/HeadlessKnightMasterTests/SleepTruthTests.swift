@@ -226,8 +226,39 @@ struct SleepTruthFlowTests {
     }
 }
 
-// MARK: - 窗口位置
+// MARK: - 报告里的电量
 
+@Suite(.serialized)
+@MainActor
+struct ReportBatteryTests {
+    @Test("回来先插了电源：掉电照样按期间最低点算")
+    func reportUsesTheLowestPoint() async {
+        // 2026-10-25 的真实过程：98% 出门，睡一夜到 96%，回来插上电源充回 98%，
+        // 然后才点「结束外出模式」。旧代码在这时候读到的结束电量是 98%，
+        // 报告写成「没有下降」。
+        let (sim, state) = makeState { sim in
+            sim.batteryLevel = 98
+        }
+        await reachReadyToUnplug(state)
+        sim.simulateDisplayCount(0)
+        await waitUntil { state.sleepOutcome == .slept }
+
+        sim.batteryLevel = 96
+        // 等一拍 ticker（1 秒一次）把最低点记下来。
+        try? await Task.sleep(nanoseconds: 1_300_000_000)
+        sim.batteryLevel = 98
+        sim.advanceClock(by: 9 * 3600)
+
+        await state.finishAway()
+
+        #expect(state.report?.batteryStart == 98)
+        #expect(state.report?.batteryEnd == 98)
+        #expect(state.report?.batteryLow == 96)
+        #expect(state.report?.batteryText == "掉电 2%")
+    }
+}
+
+// MARK: - 窗口位置
 @Suite("面板不许跑到屏幕外面")
 struct PanelPlacementTests {
     /// 这台机器的真实数字：1504×940，菜单栏 24pt，程序坞占掉下面 61pt。

@@ -1544,6 +1544,9 @@ public final class AppState: ObservableObject {
             durationSeconds: max(0, Int(endedAt.timeIntervalSince(state.startedAt))),
             batteryStart: state.batteryStart,
             batteryEnd: batteryEnd,
+            // 用户回来往往先插电源再点「结束」，那时候电量已经充回去了。
+            // 这一趟到底掉了多少电，得看期间见过的最低点。
+            batteryLow: state.batteryLow,
             sleptAtAll: result.sleptAtAll,
             darkWakeCount: result.darkWakeCount,
             notificationWakeCount: result.notificationWakeCount,
@@ -1819,9 +1822,25 @@ public final class AppState: ObservableObject {
                 guard let self else { return }
                 self.now = self.deps.clock.now
                 self.batteryNow = self.deps.battery.percentage()
+                self.recordBatteryLow()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
+    }
+
+    /// 记下外出期间见过的最低电量。
+    ///
+    /// 只存首尾是不够的：用户回来第一件事往往是插电源，等他把「结束外出模式」
+    /// 点下去，电池早就充回去了，报告就会写「没有掉电」。2026-10-25 那趟
+    /// 睡了一夜掉 2%（98%→96%），结束时已经充回 98%。
+    ///
+    /// 每掉一个百分点才写一次盘，一晚也就几次。
+    private func recordBatteryLow() {
+        guard var current = session, let battery = batteryNow else { return }
+        if let low = current.batteryLow, low <= battery { return }
+        current.batteryLow = battery
+        session = current
+        try? deps.store.saveState(current)
     }
 
     private func stopTicker() {

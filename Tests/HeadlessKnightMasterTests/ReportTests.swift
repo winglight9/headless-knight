@@ -11,7 +11,8 @@ private func makeReport(
     notification: Int = 0,
     real: [WakeEvent] = [],
     batteryStart: Int? = 78,
-    batteryEnd: Int? = 74
+    batteryEnd: Int? = 74,
+    batteryLow: Int? = nil
 ) -> Report {
     Report(
         startedAt: baseDate,
@@ -19,6 +20,7 @@ private func makeReport(
         durationSeconds: 19_320,
         batteryStart: batteryStart,
         batteryEnd: batteryEnd,
+        batteryLow: batteryLow,
         sleptAtAll: sleptAtAll,
         darkWakeCount: dark,
         notificationWakeCount: notification,
@@ -91,10 +93,26 @@ struct ReportTests {
 
     @Test("电量文案")
     func batteryText() {
-        #expect(makeReport().batteryText == "电量 74% · 下降 4%")
+        #expect(makeReport().batteryText == "掉电 4%")
         #expect(makeReport(batteryEnd: nil).batteryText == "外出期间电量耗尽")
-        #expect(makeReport(batteryStart: 50, batteryEnd: 50).batteryText == "电量 50% · 没有下降")
-        #expect(makeReport().secondaryBatteryText == "共 5 小时 22 分 · 下降 4%")
+        #expect(makeReport(batteryStart: 50, batteryEnd: 50).batteryText == "没有掉电")
+        #expect(makeReport().secondaryBatteryText == "共 5 小时 22 分 · 掉电 4%")
+    }
+
+    @Test("回来先插了电源：掉电按期间最低点算，不是按结束那一刻")
+    func batteryUsesTheLowestPoint() {
+        // 2026-10-25 的真实数字：98% 出门，睡一夜到 96%，回来插上电源充回 98%。
+        let report = makeReport(batteryStart: 98, batteryEnd: 98, batteryLow: 96)
+        #expect(report.batteryDelta == 2)
+        #expect(report.batteryText == "掉电 2%")
+        #expect(report.secondaryBatteryText == "共 5 小时 22 分 · 掉电 2%")
+    }
+
+    @Test("没记最低点（老报告）：退回按首尾算")
+    func batteryFallsBackToEndpoints() {
+        let report = makeReport(batteryStart: 98, batteryEnd: 96)
+        #expect(report.batteryDelta == 2)
+        #expect(report.batteryText == "掉电 2%")
     }
 
     @Test("报告能编码成设计文档里的字段")

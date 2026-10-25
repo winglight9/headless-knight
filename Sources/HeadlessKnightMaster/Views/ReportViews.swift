@@ -38,7 +38,7 @@ struct CleanReportView: View {
     private var detailLines: some View {
         DetailLine(label: "区间", value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
         DetailLine(label: "时长", value: report.durationText)
-        DetailLine(label: "电量", value: report.batteryText)
+        DetailLine(label: "掉电", value: report.batteryText)
         DetailLine(label: "暗唤醒", value: "\(report.darkWakeCount) 次")
         DetailLine(label: "通知唤醒", value: "\(report.notificationWakeCount) 次")
         DetailLine(label: "真实唤醒", value: "\(report.realWakeCount) 次")
@@ -102,7 +102,7 @@ struct AnomalyReportView: View {
     private var detailLines: some View {
         DetailLine(label: "区间", value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
         DetailLine(label: "时长", value: report.durationText)
-        DetailLine(label: "电量", value: report.batteryText)
+        DetailLine(label: "掉电", value: report.batteryText)
         DetailLine(label: "暗唤醒", value: "\(report.darkWakeCount) 次")
         DetailLine(label: "通知唤醒", value: "\(report.notificationWakeCount) 次")
         ForEach(report.realWakes) { wake in
