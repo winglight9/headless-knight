@@ -18,7 +18,13 @@ final class AwayHarness {
     /// 流程自己打出来的每一步，用来断言「跳过检测页」这类看不见的行为。
     private(set) var lines: [String] = []
 
-    init(sleepDelaySeconds: Int = 1, _ configure: (SimulatedServices) -> Void = { _ in }) {
+    init(
+        sleepDelaySeconds: Int = 1,
+        // 默认 0：绝大多数测试关心的是「最终停在哪一页」，不该等。
+        // 要观察「正在请求睡眠」这一段的话，得给它一个非零窗口。
+        sleepVerifySeconds: Double = 0,
+        _ configure: (SimulatedServices) -> Void = { _ in }
+    ) {
         let sim = SimulatedServices()
         sim.storedSettings = AppSettings(
             onboardingDone: true,
@@ -33,7 +39,7 @@ final class AwayHarness {
             timing: Timing(
                 countdownTick: 0.01,
                 detectPollSeconds: 0.05,
-                sleepVerifySeconds: 0,
+                sleepVerifySeconds: sleepVerifySeconds,
                 unplugPollSeconds: 3600,
                 sleepRetrySeconds: 3600
             )
@@ -225,6 +231,26 @@ struct AwayFlowHappyPathTests {
         await AwayHarness.waitUntil { harness.state.sleepOutcome == .slept }
         #expect(harness.state.sleepOutcome == .slept)
         #expect(harness.state.screen == .away)
+    }
+
+    /// 拔线那一瞬系统会连报好几次拓扑变化（2026-10-25 12:29 真机上是三次）。
+    /// 以前每报一次就起一个新倒计时，日志里刷出一串「判定已拔线」。
+    @Test("拔线时连报几次拓扑变化，只请求一次睡眠、不再起倒计时")
+    func repeatedTopologyEventsDoNotRestartCountdown() async {
+        // 给一个非零的验证窗口，好让「正在请求睡眠」这一段真的存在——
+        // 窗口是 0 的话睡眠瞬间就成功了，事件根本落不进那个状态。
+        let harness = AwayHarness(sleepVerifySeconds: 0.4) { twoBlockers($0) }
+        await harness.enterAway()
+
+        harness.sim.simulateDisplayCount(0)
+        await AwayHarness.waitUntil { harness.sim.sleepNowCalls == 1 }
+
+        // 系统还在继续报拓扑变化，这时 sleepOutcome 是 .requesting。
+        harness.sim.simulateDisplayCount(0)
+        harness.sim.simulateDisplayCount(0)
+
+        #expect(harness.state.unplugCountdown == nil)
+        #expect(harness.sim.sleepNowCalls == 1)
     }
 
     @Test("拔线后请求睡眠，状态变成外出中")

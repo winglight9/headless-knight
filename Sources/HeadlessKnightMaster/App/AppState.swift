@@ -1079,6 +1079,11 @@ public final class AppState: ObservableObject {
 
     private func markDetachedAndCountdown() {
         guard unplugCountdown == nil, !awaitingDisplayReturnForRetry else { return }
+        // 已经在请求睡眠、或者已经睡过了：显示器事件还会连着来好几次（拔线那一瞬
+        // 系统会连报三四遍拓扑变化），每来一遍都起一个新倒计时，日志里就刷出一串
+        // 「判定已拔线」，界面上还会闪一下倒计时。2026-10-25 12:29 真机上就是这么
+        // 连刷了三次——睡眠其实只请求了一次。
+        guard sleepOutcome != .requesting, sleepOutcome != .slept else { return }
         // 内建屏亮着 = 笔记本盖子开着 = 人就在电脑前。自动流程在这种时候动手
         // 是灾难：2026-10-25 01:57 用户掀开盖子，软件还在按「拔线了」处理，
         // 连叫了三次睡眠。
@@ -1109,8 +1114,8 @@ public final class AppState: ObservableObject {
         // 或者用户已经回到拔线页之外的什么地方。以前这里直接往下走，于是
         // 2026-10-25 01:57 在「确认已进入睡眠」之后两秒又叫了一次睡，失败，
         // 弹了一条「没能进入睡眠」。
-        guard screen == .readyToUnplug, sleepOutcome != .slept else {
-            HKMLog.info("睡眠倒计时到点，但已经不在拔线页（\(screen)），不再请求睡眠")
+        guard screen == .readyToUnplug, sleepOutcome != .slept, sleepOutcome != .requesting else {
+            HKMLog.info("睡眠倒计时到点，但已经不在拔线页（\(screen)）或已在请求中，不再请求睡眠")
             return
         }
         Task { await performSleepNow() }
