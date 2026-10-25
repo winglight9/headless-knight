@@ -48,6 +48,12 @@ public final class AppState: ObservableObject {
         case requesting
         case slept
         case failed(reason: String)
+        /// 叫了睡，但拿不到证据（读不到电源日志、也没有时钟跳变的旁证）。
+        ///
+        /// 这一档必须和 `failed` 分开：`failed` 是「确认还醒着」，可以理直气壮地
+        /// 提醒用户；`unverified` 是「不知道」，拿它去弹「没能进入睡眠」就是在
+        /// 冤枉一台已经睡了一整夜的机器。
+        case unverified(reason: String)
     }
 
     // MARK: - Published state
@@ -136,6 +142,15 @@ public final class AppState: ObservableObject {
     /// 睡眠失败后，必须先把显示器插回来再拔，才允许重新自动倒计时——
     /// 否则用户看着「没睡成」的提示，后台已经在无限重试。
     private var awaitingDisplayReturnForRetry = false
+    /// 这一趟里「没能进入睡眠」只弹一次。以前每失败一轮就弹一条，一夜攒了七条，
+    /// 用户早上开屏看到的第一条就是它。
+    private var didPostSleepFailure = false
+    /// 进程被挂起多久才算「机器真的睡了」。
+    ///
+    /// 请求睡眠之后那段等待，如果机器睡了，进程是冻结着过去的，醒来时墙上时钟
+    /// 早就跳过去了。跳了超过这个数就不必再看任何日志——这是最硬的证据，
+    /// 而且不依赖 `pmset -g log` 能不能读出来。
+    private static let suspendProofSeconds: TimeInterval = 60
     /// 扫描本身失败时留一条记录，报告里要能看出这次没检查过。
     private var scanIssue: FailedItem?
     /// 当前这份报告对应的那一趟，设置是不是已经还原过了。
@@ -923,6 +938,7 @@ public final class AppState: ObservableObject {
         unplugCountdown = nil
         didMarkDetached = false
         sleepOutcome = .idle
+        didPostSleepFailure = false
         awaitingDisplayReturnForRetry = false
         displayCount = deps.displays.activeDisplayCount()
         baselineDisplayIDs = deps.displays.onlineDisplayIDs()
@@ -1000,10 +1016,13 @@ public final class AppState: ObservableObject {
     private func handleDisplayChange(_ count: Int) {
         displayCount = count
         let detached = isDisplayDetached()
+        // 盖子开着 = 人在电脑前。这是「拔线」之外的第二条线索，以前完全没有：
+        // 外接屏拔掉之后基线永远是空的，用户掀开盖子软件也照样认为他还在外面。
+        let userPresent = deps.displays.builtinOnline()
         displaysDetached = detached
         switch screen {
         case .readyToUnplug:
-            if detached {
+            if detached, !userPresent {
                 if awaitingDisplayReturnForRetry {
                     narrate("[8/8] 显示器又断了，但上次没睡成，等你手动重试")
                 } else if unplugCountdown == nil {
@@ -1011,15 +1030,16 @@ public final class AppState: ObservableObject {
                     markDetachedAndCountdown()
                 }
             } else {
-                // 显示器回来了（或者只是休眠又醒）：倒计时必须取消，绝不硬睡。
+                // 显示器回来了（或者只是休眠又醒、盖子打开了）：倒计时必须取消，
+                // 绝不硬睡。
                 if unplugCountdown != nil {
-                    narrate("[8/8] 显示器插回来了，取消睡眠倒计时")
+                    narrate(userPresent ? "[8/8] 盖子开着，人在电脑前，取消睡眠倒计时" : "[8/8] 显示器插回来了，取消睡眠倒计时")
                     cancelCountdown()
                 }
                 awaitingDisplayReturnForRetry = false
             }
         case .away:
-            if !detached, !didNotifyReturn {
+            if !detached || userPresent, !didNotifyReturn {
                 didNotifyReturn = true
                 deps.notifier.post(title: "欢迎回来", body: "别忘了结束外出模式")
             }
@@ -1030,6 +1050,15 @@ public final class AppState: ObservableObject {
 
     private func markDetachedAndCountdown() {
         guard unplugCountdown == nil, !awaitingDisplayReturnForRetry else { return }
+        // 内建屏亮着 = 笔记本盖子开着 = 人就在电脑前。自动流程在这种时候动手
+        // 是灾难：2026-10-25 01:57 用户掀开盖子，软件还在按「拔线了」处理，
+        // 连叫了三次睡眠。
+        guard !deps.displays.builtinOnline() else {
+            if !didMarkDetached {
+                narrate("[8/8] 内建屏亮着（盖子开着），不自动睡眠")
+            }
+            return
+        }
         if !didMarkDetached {
             didMarkDetached = true
             if var updated = session {
@@ -1047,6 +1076,14 @@ public final class AppState: ObservableObject {
 
     private func triggerSleepNow() {
         unplugCountdown = nil
+        // 倒计时是几秒前起的，到点的时候局面可能已经变了：机器已经睡下了，
+        // 或者用户已经回到拔线页之外的什么地方。以前这里直接往下走，于是
+        // 2026-10-25 01:57 在「确认已进入睡眠」之后两秒又叫了一次睡，失败，
+        // 弹了一条「没能进入睡眠」。
+        guard screen == .readyToUnplug, sleepOutcome != .slept else {
+            HKMLog.info("睡眠倒计时到点，但已经不在拔线页（\(screen)），不再请求睡眠")
+            return
+        }
         Task { await performSleepNow() }
     }
 
@@ -1085,6 +1122,7 @@ public final class AppState: ObservableObject {
 
         var lastReason: String?
         var slept = false
+        var unverified = false
 
         // 显示器还插着的时候，「让系统睡眠」实际发生的是：屏幕黑一下 → WindowServer
         // 立刻抓一个 PreventSystemSleep 把系统拽回来 → 屏幕又亮。连试三次就是连闪
@@ -1116,6 +1154,8 @@ public final class AppState: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(max(1, timing.countdownTick) * 1_000_000_000))
             }
 
+            // 这一拍的起点。下面用它来判断「这段等待是不是在挂起中过去的」。
+            let attemptStartedAt = deps.clock.now
             do {
                 try await deps.power.sleepNow()
                 narrate("→ 第 \(attempt) 次请求睡眠")
@@ -1124,19 +1164,37 @@ public final class AppState: ObservableObject {
                 narrate("→ 请求睡眠失败：\(lastReason ?? "")")
             }
 
-            // 真睡了的话，这段等待是在挂起状态下过去的，检查会在唤醒之后才继续，
-            // 那时日志里必然已经有 Entering Sleep。
+            // 真睡了的话，这段等待是在挂起状态下过去的，检查会在唤醒之后才继续。
             try? await Task.sleep(nanoseconds: UInt64(max(0, timing.sleepVerifySeconds) * 1_000_000_000))
-            if await deps.power.didEnterSleep(since: requestedAt) {
+
+            // 第一证据：墙上时钟跳了多远。跳得比「该等的时间」多出 60 秒以上，
+            // 说明进程被冻结过 = 机器真的睡了。这一条不需要读任何日志，
+            // 2026-10-25 那次就是靠它才对得上的：日志读不出来，但时间跳了 96 分钟。
+            let elapsed = deps.clock.now.timeIntervalSince(attemptStartedAt)
+            if elapsed >= max(0, timing.sleepVerifySeconds) + Self.suspendProofSeconds {
                 slept = true
-                HKMLog.info("确认已进入睡眠（第 \(attempt) 次请求）")
+                HKMLog.info("进程被挂起 \(Int(elapsed)) 秒 → 机器确实睡了（第 \(attempt) 次请求）")
                 break
             }
-            let holders = await deps.power.systemSleepBlockers()
-            lastReason = holders.isEmpty
-                ? "系统没有进入睡眠"
-                : "\(holders.joined(separator: "、")) 占着系统睡眠"
-            HKMLog.error("第 \(attempt) 次请求后系统仍然醒着：\(lastReason ?? "")")
+
+            switch await deps.power.sleepEvidence(since: attemptStartedAt) {
+            case .slept:
+                slept = true
+                HKMLog.info("确认已进入睡眠（第 \(attempt) 次请求）")
+            case .awake:
+                unverified = false
+                let holders = await deps.power.systemSleepBlockers()
+                lastReason = holders.isEmpty
+                    ? "系统没有进入睡眠"
+                    : "\(holders.joined(separator: "、")) 占着系统睡眠"
+                HKMLog.error("第 \(attempt) 次请求后系统仍然醒着：\(lastReason ?? "")")
+            case .unknown:
+                // 读不到日志 ≠ 没睡。以前这里直接算失败，一晚上七条误报。
+                unverified = true
+                lastReason = "读不到电源日志，没法确认有没有睡着"
+                HKMLog.error("第 \(attempt) 次请求后拿不到睡眠证据（读不到电源日志）")
+            }
+            if slept { break }
         }
 
         if slept {
@@ -1163,11 +1221,17 @@ public final class AppState: ObservableObject {
 
         // 没睡成：绝不切到「外出中」，也绝不说「系统已进入睡眠」。
         let reason = lastReason ?? "系统拒绝了睡眠请求"
-        sleepOutcome = .failed(reason: reason)
+        sleepOutcome = unverified ? .unverified(reason: reason) : .failed(reason: reason)
         awaitingDisplayReturnForRetry = true
         if screen != .auditing && screen != .report {
             screen = .readyToUnplug
             iconState = .alert
+        }
+        if unverified {
+            // 不知道就别下结论，也别推送。页面上照实说，按钮留着让用户自己决定。
+            errorMessage = "请求了睡眠，但读不到电源日志，没法确认它到底睡没睡"
+            narrate("→ 睡眠状态未知：\(reason)")
+            return
         }
         // 「系统没有进入睡眠」这句是循环论证，用户看完还是不知道为什么。
         // 屏幕还插着的时候原因其实很确定：刚睡下就被屏幕的重新配置拽回来了。
@@ -1175,7 +1239,11 @@ public final class AppState: ObservableObject {
             ? "显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡"
             : "没能让电脑睡着：\(reason)"
         narrate("→ 睡眠失败：\(reason)")
-        deps.notifier.post(title: "没能进入睡眠", body: "电脑还醒着：\(reason)")
+        // 一趟只提醒一次。以前每失败一轮弹一条，一晚上七条，把真正重要的信息淹了。
+        if !didPostSleepFailure {
+            didPostSleepFailure = true
+            deps.notifier.post(title: "没能进入睡眠", body: "电脑还醒着：\(reason)")
+        }
         if !fromWatchdog {
             startSleepRetryWatchdog()
         }
@@ -1197,6 +1265,8 @@ public final class AppState: ObservableObject {
                 guard let self else { return }
                 guard self.displaysDetached, self.screen == .readyToUnplug,
                       case .failed = self.sleepOutcome else { return }
+                // 盖子开着 = 人在电脑前，别再叫它睡了。
+                guard !self.deps.displays.builtinOnline() else { return }
                 attempts += 1
                 self.narrate("→ 后台重试睡眠（第 \(attempts) 次）")
                 await self.performSleepNow(fromWatchdog: true)

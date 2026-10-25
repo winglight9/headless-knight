@@ -107,7 +107,7 @@ enum Simulation {
         // 等到「睡没睡」有结论。请求发出去不等于睡了——这正是要验证的那件事。
         await waitUntil {
             switch state.sleepOutcome {
-            case .slept, .failed: return true
+            case .slept, .failed, .unverified: return true
             case .idle, .requesting: return false
             }
         }
@@ -117,6 +117,11 @@ enum Simulation {
         case let .failed(reason):
             print("→ 请求睡眠 \(sim.sleepNowCalls) 次，系统没睡：\(reason)")
             print("→ screen = \(describe(state.screen))（不会假装已经出门）")
+            print(String(repeating: "─", count: 56))
+            return 0
+        case let .unverified(reason):
+            print("→ 请求睡眠 \(sim.sleepNowCalls) 次，拿不到证据：\(reason)（不算没睡）")
+            print("→ screen = \(describe(state.screen))")
             print(String(repeating: "─", count: 56))
             return 0
         case .idle, .requesting:

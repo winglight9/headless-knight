@@ -3,37 +3,70 @@ import SwiftUI
 struct ReadyToUnplugView: View {
     @EnvironmentObject private var state: AppState
 
-    private var sleepFailureReason: String? {
-        if case let .failed(reason) = state.sleepOutcome { return reason }
-        return nil
+    /// 「没睡成」分两种，不能混着说。
+    ///
+    /// 以前只有一种：只要验证没通过就写「还没能睡着」。2026-10-25 早上那扇窗口
+    /// 就是这么来的——机器睡了一整夜、只掉 4% 的电，页面上却写着「电脑还醒着，
+    /// 别急着装包」。
+    private enum SleepProblem {
+        case none
+        /// 确认还醒着。
+        case awake(String)
+        /// 拿不到证据。
+        case unknown(String)
+    }
+
+    private var problem: SleepProblem {
+        switch state.sleepOutcome {
+        case let .failed(reason): return .awake(reason)
+        case let .unverified(reason): return .unknown(reason)
+        case .idle, .requesting, .slept: return .none
+        }
+    }
+
+    private var hasProblem: Bool {
+        if case .none = problem { return false }
+        return true
     }
 
     private var subtitle: String {
-        if sleepFailureReason != nil {
-            return "电脑还醒着，别急着装包"
+        switch problem {
+        case let .awake(reason):
+            return "电脑还醒着：\(reason)"
+        case .unknown:
+            return "读不到电源日志，先别急着装包"
+        case .none:
+            if let remaining = state.unplugCountdown, state.displaysDetached {
+                return "\(remaining) 秒后自动睡眠"
+            }
+            return "拔线后 \(state.sleepDelaySeconds) 秒自动睡眠"
         }
-        if let remaining = state.unplugCountdown, state.displaysDetached {
-            return "\(remaining) 秒后自动睡眠"
+    }
+
+    private var headline: String {
+        switch problem {
+        case .awake: return "还没能睡着"
+        case .unknown: return "还没能确认睡着"
+        case .none: return "可以拔掉显示器了"
         }
-        return "拔线后 \(state.sleepDelaySeconds) 秒自动睡眠"
     }
 
     var body: some View {
-        PopupScaffold(status: sleepFailureReason == nil ? .ready : .attention, title: "无头骑士大师") {
+        PopupScaffold(status: hasProblem ? .attention : .ready, title: "无头骑士大师") {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    if sleepFailureReason == nil {
+                    if !hasProblem {
                         SuccessBadge(size: 50)
                             .padding(.top, 26)
                     } else {
                         LockGlyph(size: 44)
                             .padding(.top, 26)
                     }
-                    Text(sleepFailureReason == nil ? "可以拔掉显示器了" : "还没能睡着")
+                    Text(headline)
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Theme.ink)
                         .padding(.top, 14)
-                    NoteText(text: subtitle)
+                    NoteText(text: subtitle, alignment: .center)
                         .padding(.top, 7)
                 }
                 .frame(maxWidth: .infinity)
@@ -62,7 +95,8 @@ struct ReadyToUnplugView: View {
                 }
 
                 // 睡眠失败必须明说，绝不能让用户以为已经睡了然后装包走人。
-                if let reason = sleepFailureReason {
+                switch problem {
+                case let .awake(reason):
                     WarningBox {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(reason)
@@ -85,6 +119,28 @@ struct ReadyToUnplugView: View {
                         state.retrySleep()
                     }
                     .padding(.top, 10)
+                case let .unknown(reason):
+                    WarningBox {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("查不到睡眠记录，不代表它没睡。看一眼电量就知道：一夜掉得很少就是睡了")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.ink)
+                                .lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(reason)
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.tertiaryInk)
+                                .lineSpacing(2)
+                        }
+                    }
+                    .padding(.top, 14)
+
+                    PopupButton(title: "再试一次睡眠", isEnabled: !state.isBusy) {
+                        state.retrySleep()
+                    }
+                    .padding(.top, 10)
+                case .none:
+                    EmptyView()
                 }
 
                 // 兜底：万一哪台机器的显示器拓扑识别不出来，用户还能直接按一下。
@@ -93,7 +149,7 @@ struct ReadyToUnplugView: View {
                 // 名字必须写清它是干什么的。以前叫「现在就让电脑睡眠」，用户会当成
                 // 「我想现在睡」去点——可显示器还插着的时候，这一按只会让屏幕黑一下
                 // 又亮回来。它真正的用途是「我拔了，你没发现」。
-                if sleepFailureReason == nil, !state.displaysDetached {
+                if !hasProblem, !state.displaysDetached {
                     PopupButton(title: "我已经拔线了，让它睡", style: .ghost, isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
@@ -105,7 +161,7 @@ struct ReadyToUnplugView: View {
                 PopupButton(title: "结束外出模式", style: .ghost) {
                     state.cancelReadyToUnplug()
                 }
-                .padding(.top, sleepFailureReason == nil && !state.displaysDetached ? 8 : 14)
+                .padding(.top, hasProblem || state.displaysDetached ? 14 : 8)
             }
         }
     }

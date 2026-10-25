@@ -49,6 +49,8 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var mainID: CGDirectDisplayID = 1
     /// 这些 ID 是影子屏：还挂在 online 列表里，但厂商/型号是 0。
     var phantomIDs: Set<CGDirectDisplayID> = []
+    /// 内建屏亮着（笔记本盖子开着）。默认关着，就是「无头」那台机器。
+    var builtinIsOnline = false
 
     var powerLog = ""
     /// `readPowerLog()` 被调了几次。用来验证「预读过就不再读第二遍」。
@@ -61,6 +63,15 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var sleepNowFails: String?
     /// `pmset sleepnow` 调用成功，但系统其实没睡。
     var sleepSucceeds = true
+    /// 睡眠验证的答案。默认 `.awake`：`sleepSucceeds = false` 的老测试都靠这个
+    /// 表达「叫了但它没睡」。`.unknown` 用来复现「读不到电源日志」。
+    var sleepEvidenceValue: PowerSettings.SleepEvidence = .awake
+    /// 每次 `sleepnow` 之后时间往前走多少秒。
+    ///
+    /// 用来复现「机器真的睡了」：进程挂起，醒来时墙上时钟已经跳了几个小时。
+    /// 这是 `AppState` 判断「真睡了」的第一依据，也是 2026-10-25 那次误报的
+    /// 正解——日志读不出来，但时间确实跳了 96 分钟。
+    var advanceClockOnSleepNow: TimeInterval = 0
     /// 持有 PreventSystemSleep 的进程名。
     var sleepBlockers: [String] = []
     var storedSettings = AppSettings(onboardingDone: true, launchAtLogin: false, sleepDelaySeconds: 5)
@@ -235,14 +246,18 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     func sleepNow() async throws {
         sleepNowCalls += 1
         record("sleepNow")
+        // 真机上这段等待是在挂起中过去的，醒来时墙上时钟已经跳过去了。
+        if advanceClockOnSleepNow > 0 {
+            advanceClock(by: advanceClockOnSleepNow)
+        }
         if let sleepNowFails {
             throw SimulatedError(message: sleepNowFails)
         }
     }
 
     /// 系统到底睡没睡。`sleepSucceeds = false` 用来复现「叫了但没睡」。
-    func didEnterSleep(since: Date) async -> Bool {
-        sleepSucceeds
+    func sleepEvidence(since: Date) async -> PowerSettings.SleepEvidence {
+        sleepSucceeds ? .slept : sleepEvidenceValue
     }
 
     func systemSleepBlockers() async -> [String] {
@@ -363,6 +378,10 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     func mainDisplayID() -> CGDirectDisplayID {
         mainID
+    }
+
+    func builtinOnline() -> Bool {
+        builtinIsOnline
     }
 
     func remoteLogins() async -> [String] {

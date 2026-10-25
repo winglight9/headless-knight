@@ -30,7 +30,8 @@ protocol PowerControlling {
     func restore(_ snapshot: PmsetSnapshot) async -> [FailedItem]
     func sleepNow() async throws
     /// `since` 之后系统有没有真的进入过睡眠。不验证就切到「外出中」等于骗人。
-    func didEnterSleep(since: Date) async -> Bool
+    /// 读不到证据要返回 `.unknown`，不许当成「没睡」。
+    func sleepEvidence(since: Date) async -> PowerSettings.SleepEvidence
     /// 谁在拿 `PreventSystemSleep` 挡着——睡眠失败时要能说清楚是谁。
     func systemSleepBlockers() async -> [String]
 }
@@ -72,6 +73,8 @@ protocol DisplayWatching {
     func onlineDisplayIDs() -> [CGDirectDisplayID]
     /// 主显示器 ID。拔掉唯一那块屏之后它会换人。
     func mainDisplayID() -> CGDirectDisplayID
+    /// 内建屏是不是亮着（笔记本 = 盖子开着 = 人在电脑前）。
+    func builtinOnline() -> Bool
     /// 给日志用：每块屏的 ID / 内建 / 活动 / 厂商型号。
     func describeDisplays() -> String
     /// 每块屏的 ID + 厂商/型号/序列号。用来认出「拔线后系统留下的影子屏」——
@@ -157,6 +160,10 @@ extension DisplayWatcher: DisplayWatching {
 
     func mainDisplayID() -> CGDirectDisplayID {
         DisplayWatcher.mainDisplayID()
+    }
+
+    func builtinOnline() -> Bool {
+        DisplayWatcher.builtinOnline()
     }
 
     func describeDisplays() -> String {

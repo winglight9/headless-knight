@@ -5,10 +5,17 @@ import Foundation
 public struct PowerSettings: Sendable {
     private let runner: any CommandRunning
     private let executor: any PrivilegedExecuting
+    /// 内核记的「最后一次进入睡眠」的时刻。测试里换掉，免得跟着真机走。
+    private let lastSleepProvider: @Sendable () -> Date?
 
-    public init(runner: any CommandRunning = ShellRunner(), executor: any PrivilegedExecuting = PrivilegedExecutorFactory.make()) {
+    public init(
+        runner: any CommandRunning = ShellRunner(),
+        executor: any PrivilegedExecuting = PrivilegedExecutorFactory.make(),
+        lastSleepProvider: @escaping @Sendable () -> Date? = { PowerSettings.lastSleepTime() }
+    ) {
         self.runner = runner
         self.executor = executor
+        self.lastSleepProvider = lastSleepProvider
     }
 
     // MARK: - Reading
@@ -185,29 +192,63 @@ public struct PowerSettings: Sendable {
 
     // MARK: - 睡眠验证
 
+    /// 「叫它睡之后，到底睡没睡」的三种答案。
+    ///
+    /// `unknown` 这一档以前不存在：读不到电源日志被当成「没睡」，于是
+    /// 2026-10-25 凌晨那趟——机器从 00:21 一直睡到早上、一整夜只掉了 4% 的电
+    /// ——被报成「系统没有进入睡眠」，还连发了七条「没能进入睡眠」的通知。
+    /// 读不到证据就是读不到，不能替系统认罪。
+    public enum SleepEvidence: Sendable, Equatable {
+        case slept
+        case awake
+        /// 拿不到任何旁证。**不等于没睡。**
+        case unknown
+    }
+
+    /// 内核记的「最后一次进入睡眠」的时刻（`kern.sleeptime`）。
+    ///
+    /// 一次 sysctl，微秒级；`pmset -g log` 是几兆的文本，要几百毫秒到几十秒。
+    /// 这个值只在真的进入睡眠时才会更新，所以「它早于我们请求的时刻」就是
+    /// 「这之后没睡过」的硬证据。
+    public static func lastSleepTime() -> Date? {
+        var value = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.sleeptime", &value, &size, nil, 0) == 0,
+              value.tv_sec > 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(value.tv_sec) + TimeInterval(value.tv_usec) / 1_000_000)
+    }
+
     /// `since` 之后系统到底有没有进入过睡眠。
     ///
     /// 不能靠定时器判断：机器真睡了，进程就挂起了，定时器根本不会走。
-    /// 只有 `pmset -g log` 是脱离本进程的旁证——我们被挂起的时候它还在记。
+    /// 只有脱离本进程的旁证才算数——内核的 `kern.sleeptime`，以及 `pmset -g log`。
     ///
-    /// 所以这里的时序是：请求睡眠 → 等几秒 → 读日志。如果真睡了，这几秒是在
-    /// 挂起状态下过去的，读日志发生在唤醒之后，日志里必然有 `Entering Sleep`。
-    /// 读日志要几百毫秒，放到后台线程，别卡住菜单栏。
-    public func didEnterSleep(since: Date) async -> Bool {
+    /// 给 3 秒余量：两边的时间戳精度都是秒，而且日志写入有延迟。
+    public func sleepEvidence(since: Date) async -> SleepEvidence {
+        let threshold = since.addingTimeInterval(-3)
+        if let last = lastSleepProvider(), last >= threshold {
+            return .slept
+        }
+
+        // 内核那边说没睡，再读一遍日志复核：万一某个机型不更新 kern.sleeptime，
+        // 只信它就会把「睡了」报成「没睡」——这正是要修的那个 bug。
+        let log = await readPowerLog()
+        guard !log.isEmpty else {
+            HKMLog.error("读不到电源日志，无法确认是否真的睡了")
+            return .unknown
+        }
+        let entries = WakeAuditor.parse(log)
+        return entries.contains { $0.kind == .sleepEnter && $0.at >= threshold } ? .slept : .awake
+    }
+
+    private func readPowerLog() async -> String {
         let runner = self.runner
-        let log: String = await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = try? runner.run("/usr/bin/pmset", arguments: ["-g", "log"], timeout: 30)
                 continuation.resume(returning: result?.stdout ?? "")
             }
         }
-        guard !log.isEmpty else {
-            HKMLog.error("读不到电源日志，无法确认是否真的睡了")
-            return false
-        }
-        let entries = WakeAuditor.parse(log)
-        // 给 3 秒余量：pmset 的时间戳精度是秒，而且日志写入有延迟。
-        return entries.contains { $0.kind == .sleepEnter && $0.at >= since.addingTimeInterval(-3) }
     }
 
     /// 当前持有 `PreventSystemSleep` 的进程名。

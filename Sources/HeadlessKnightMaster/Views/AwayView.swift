@@ -19,6 +19,8 @@ struct AwayView: View {
             parts.append("正在让系统睡眠…")
         case let .failed(reason):
             parts.append("系统没有睡着：\(reason)")
+        case let .unverified(reason):
+            parts.append("没法确认睡着：\(reason)")
         case .idle:
             parts.append(state.session?.sleepRequestedAt != nil ? "睡眠请求已发出" : "还没请求睡眠")
         }

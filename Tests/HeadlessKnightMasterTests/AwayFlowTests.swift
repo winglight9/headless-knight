@@ -70,7 +70,7 @@ final class AwayHarness {
         // 等到「睡没睡」这件事有结论，而不是等到请求发出去——请求发出去不等于睡了。
         await AwayHarness.waitUntil {
             switch self.state.sleepOutcome {
-            case .slept, .failed: return true
+            case .slept, .failed, .unverified: return true
             case .idle, .requesting: return false
             }
         }

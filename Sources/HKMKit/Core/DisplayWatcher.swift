@@ -38,6 +38,17 @@ public final class DisplayWatcher: @unchecked Sendable {
         CGMainDisplayID()
     }
 
+    /// 内建屏亮着吗。
+    ///
+    /// 对笔记本来说这就是「盖子开着」——人就在电脑前。合盖外接的时候内建屏是
+    /// offline 的（2026-10-25 00:20 拔掉外接屏之后的日志里只剩一块影子屏，没有
+    /// 内建屏），所以这个信号不会误报。判断「人回来了」要靠它，不能只看
+    /// 「基线里那块外接屏还在不在」：外接屏拔了、盖子又打开了，基线永远是空的，
+    /// 软件就会以为用户一直在外面，整夜反复叫机器睡。
+    public static func builtinOnline() -> Bool {
+        onlineDisplayIDs().contains { CGDisplayIsBuiltin($0) != 0 }
+    }
+
     /// 一块屏在当前这一刻的完整身份。日志和「残影屏」判断都要用。
     public struct DisplaySnapshot: Sendable, CustomStringConvertible {
         public let id: CGDirectDisplayID

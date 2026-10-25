@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import HKMKit
 import SwiftUI
 
 /// 唯一的那扇窗口：贴在状态栏图标下面的一块面板。
@@ -35,6 +36,10 @@ final class PopoverHost: NSObject, NSWindowDelegate {
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isMovable = false
+        // 万一还是摆到了别扭的地方，用户能自己拖出来。
+        // 以前这里只有 `isMovable = false`：窗口掉到屏幕下面之后既拖不动也点不到，
+        // 只能看着它。
+        panel.isMovableByWindowBackground = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -57,6 +62,14 @@ final class PopoverHost: NSObject, NSWindowDelegate {
                 }
             }
             .store(in: &cancellables)
+
+        // 插拔显示器会让系统重新安排所有窗口的位置，我们这扇面板也在其中。
+        // 屏幕参数一变就重新摆一次，别等下一次 show()。
+        NotificationCenter.default
+            .publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.place() }
+            .store(in: &cancellables)
     }
 
     var isShown: Bool { panel.isVisible }
@@ -74,13 +87,28 @@ final class PopoverHost: NSObject, NSWindowDelegate {
         }
     }
 
+    /// 把面板挂到状态栏按钮上。
+    ///
+    /// 以前只有 `show()` 里才记这个锚点，于是「开机时状态就是外出中」那条路径
+    /// （`screenChanged` 直接 `orderFrontRegardless`）从来没被摆过位置，面板
+    /// 一直待在创建时的坐标上——屏幕最下面，然后一路往下长。
+    func attach(to button: NSStatusBarButton) {
+        anchorButton = button
+    }
+
     func show(relativeTo button: NSStatusBarButton) {
         anchorButton = button
         resize()
-        position(relativeTo: button)
+        place()
         activateApp()
         panel.makeKeyAndOrderFront(nil)
         resize()
+        place()
+        // 状态栏窗口在启动初期还没摆好，这会儿拿到的锚点可能是假的。
+        // 等菜单栏布好之后再对一次位置，用户不会看见这个过程。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.place()
+        }
     }
 
     func hide() {
@@ -114,7 +142,9 @@ final class PopoverHost: NSObject, NSWindowDelegate {
             } else {
                 // 拿不到状态栏按钮（比如图标还没就位）也得让用户看见，否则
                 // 流程在跑、界面却没影，正是用户抱怨的那件事。
+                resize()
                 panel.orderFrontRegardless()
+                place()
             }
             return
         }
@@ -134,36 +164,58 @@ final class PopoverHost: NSObject, NSWindowDelegate {
         let view = hosting.view
         view.layoutSubtreeIfNeeded()
         let height = max(120, ceil(view.fittingSize.height))
+        let width = PopoverHost.contentWidth
+        if abs(view.frame.height - height) > 0.5 {
+            view.setFrameSize(NSSize(width: width, height: height))
+        }
+        var sizeChanged = false
         if abs(panel.frame.height - height) > 0.5 {
             // 窗口是往下长的，所以固定顶边、只改高度。
-            let top = panel.frame.maxY
-            panel.setFrame(
-                NSRect(x: panel.frame.minX, y: top - height,
-                       width: PopoverHost.contentWidth, height: height),
-                display: true
-            )
+            var frame = panel.frame
+            frame.origin.y = frame.maxY - height
+            frame.size = NSSize(width: width, height: height)
+            panel.setFrame(frame, display: true)
+            sizeChanged = true
         }
-        if abs(view.frame.height - height) > 0.5 {
-            view.setFrameSize(NSSize(width: PopoverHost.contentWidth, height: height))
+        // 尺寸变了就重新摆一次；没变的话只在「已经跑到屏幕外」时纠正。
+        // 无条件摆会让用户手动拖过的位置每秒被拽回去一次（ticker 每秒都在发状态）。
+        if sizeChanged || !isFullyOnScreen {
+            place()
         }
     }
 
-    private func position(relativeTo button: NSStatusBarButton) {
-        guard let window = button.window else { return }
-        let inWindow = button.convert(button.bounds, to: nil)
-        let onScreen = window.convertToScreen(inWindow)
-        let size = panel.frame.size
+    private var isFullyOnScreen: Bool {
+        guard let visible = anchorScreen()?.visibleFrame else { return true }
+        return PanelPlacement.isFullyVisible(panel.frame, in: visible)
+    }
 
-        var x = onScreen.midX - size.width / 2
-        var y = onScreen.minY - size.height - 6
-        if let screen = window.screen ?? NSScreen.main {
-            let visible = screen.visibleFrame
-            x = min(max(visible.minX + 8, x), visible.maxX - size.width - 8)
-            if y < visible.minY + 8 {
-                y = onScreen.maxY + 6
-            }
+    private func anchorScreen() -> NSScreen? {
+        anchorButton?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private func anchorRect() -> CGRect? {
+        guard let button = anchorButton, let window = button.window else { return nil }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        // 启动那一下状态栏窗口还没就位，`convertToScreen` 会算出 (0, -23) 这种
+        // 落在屏幕外面的坐标。拿它去摆窗口，面板就跑到屏幕左下角去了。
+        // 菜单栏按钮必然在上半屏，不满足就当没有锚点。
+        guard let screen = anchorScreen(), rect.midY > screen.frame.midY else { return nil }
+        return rect
+    }
+
+    /// 摆到状态栏按钮下面，并且保证整块都在屏幕里。
+    private func place() {
+        guard let visible = anchorScreen()?.visibleFrame else { return }
+        let anchor = anchorRect()
+        let origin = PanelPlacement.origin(
+            anchor: anchor,
+            content: panel.frame.size,
+            visible: visible
+        )
+        if panel.frame.origin != origin {
+            HKMLog.info("面板摆位：锚点 \(anchor.map { "\($0)" } ?? "无")，尺寸 \(panel.frame.size)，可用 \(visible) → \(origin)")
+            panel.setFrameOrigin(origin)
         }
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
 

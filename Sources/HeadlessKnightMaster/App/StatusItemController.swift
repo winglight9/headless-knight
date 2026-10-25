@@ -19,6 +19,9 @@ final class StatusItemController: NSObject {
             button.action = #selector(handleClick)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.toolTip = "无头骑士大师"
+            // 锚点一开始就记上。开机时状态就是「外出中」那条路径不会再走到
+            // show()，面板得有个参照物才知道自己该贴在哪。
+            popover.attach(to: button)
         }
 
         state.iconStatePublisher
