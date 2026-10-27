@@ -86,6 +86,13 @@ enum UIPreview {
         for shot in shots {
             guard let scenario = Simulation.scenario(named: shot.scenario) else { continue }
             let sim = scenario.build()
+            // 官网截图要拍一台「健康」的机器：模拟场景默认 disablesleep=1（演示告警链路用），
+            // 倒计时默认 1 秒（演示时快点走完）。出图前把这两处抹平，否则首页会顶着橙色
+            // 「睡眠被锁」标签、拔线页写着「1 秒后睡」，跟页面文案和真实默认（3 秒）对不上。
+            sim.pmsetValues.values["disablesleep"] = 0
+            if sim.storedSettings.sleepDelaySeconds < 3 {
+                sim.storedSettings.sleepDelaySeconds = 3
+            }
             let state = AppState(
                 deps: .simulated(sim),
                 timing: Timing(

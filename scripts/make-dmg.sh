@@ -20,6 +20,10 @@ ln -s /Applications "$STAGING/Applications"
 # 说明只有一个真源：Resources/首次打开说明.txt。以前这段文本硬编码在脚本里，
 # 结果一直停留在 1.1，没人记得改——现在打包顺手把它同步给官网下载页。
 cp "$ROOT/Resources/首次打开说明.txt" "$STAGING/首次打开说明.txt"
+# 英文说明也放一份：界面已经会说英文了，DMG 里只给中文说明说不过去。
+if [ -f "$ROOT/Resources/First launch (English).txt" ]; then
+    cp "$ROOT/Resources/First launch (English).txt" "$STAGING/First launch (English).txt"
+fi
 mkdir -p "$ROOT/../site/download"
 cp "$ROOT/Resources/首次打开说明.txt" "$ROOT/../site/download/首次打开说明.txt" 2>/dev/null || true
 

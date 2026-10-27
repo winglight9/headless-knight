@@ -1,0 +1,33 @@
+Knight 1.8
+
+Install
+  Drag “Knight” into your Applications folder.
+
+First launch
+  The app isn't signed with an Apple developer certificate, so macOS will block it.
+  In Applications, right-click the icon → Open → Open again.
+  After that, a normal double-click works.
+
+First trip
+  It asks for an administrator password once. Sleep settings can only be changed
+  by root, so a small background helper runs those commands for the app.
+  If it ever says “the helper needs an update”, that's one more password prompt.
+
+Using it
+  The menu bar icon means it's running. Click it → Start away mode.
+
+  There are only two paths:
+    · Unplug the display → it sleeps a few seconds later, nothing to click
+    · Don't unplug       → press “Sleep now, without unplugging”
+
+  Plug the display back in and click the icon → End away mode: every setting goes
+  back, and you get told whether it really slept and whether anything woke it.
+
+Want to see what it would do first
+  Run this in Terminal (read-only, changes nothing):
+    /Applications/Knight.app/Contents/MacOS/Knight --diagnose
+
+Website and FAQ
+  https://hkm.886366.xyz/en/
+
+中文说明见「首次打开说明.txt」。

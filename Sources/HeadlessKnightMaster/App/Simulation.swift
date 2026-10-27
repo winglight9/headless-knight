@@ -248,7 +248,7 @@ enum Simulation {
     private static func success() -> SimulatedServices {
         let sim = base()
         sim.blockers = [
-            sampleBlocker("UU远程", pid: 8322, bundle: "com.netease.uuremote"),
+            sampleBlocker("Zoom", pid: 8322, bundle: "us.zoom.xos"),
             sampleBlocker(
                 "Chrome",
                 pid: 66273,
@@ -276,7 +276,7 @@ enum Simulation {
 
     private static func blockerFails() -> SimulatedServices {
         let sim = success()
-        sim.killOutcomes["UU远程"] = .failed("无法自动退出，它还在阻止睡眠。请手动退出这个程序。")
+        sim.killOutcomes["Zoom"] = .failed("无法自动退出，它还在阻止睡眠。请手动退出这个程序。")
         return sim
     }
 
