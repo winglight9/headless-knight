@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 /// 「正在自动关闭」这一页。
@@ -9,13 +10,13 @@ struct ClosingView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(status: .working, title: "无头骑士大师") {
+        PopupScaffold(status: .working, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 5) {
-                    Text("正在自动关闭")
+                    Text(L("正在自动关闭"))
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    NoteText(text: "一个一个来，关完自动进下一步", alignment: .center)
+                    NoteText(text: L("一个一个来，关完自动进下一步"), alignment: .center)
                 }
                 .padding(.top, 22)
 
@@ -39,7 +40,7 @@ struct ClosingView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 18)
 
-                TinyText(text: "这一步不用你管，窗口会一直留在屏幕上", alignment: .center)
+                TinyText(text: L("这一步不用你管，窗口会一直留在屏幕上"), alignment: .center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 16)
             }

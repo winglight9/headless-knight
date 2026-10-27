@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appMenu = NSMenu()
         let quitItem = NSMenuItem(
-            title: "退出无头骑士大师",
+            title: L("退出无头骑士大师"),
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )

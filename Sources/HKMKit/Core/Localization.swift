@@ -113,7 +113,8 @@ public enum Loc {
         return nil
     }
 
-    private static func unescape(_ raw: String) -> String {
+    /// 把源码里写的 `\n` `\"` 还原成真实字符。测试扫源码时也用这个。
+    public static func unescape(_ raw: String) -> String {
         var out = ""
         var iterator = raw.makeIterator()
         while let ch = iterator.next() {

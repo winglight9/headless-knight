@@ -47,6 +47,16 @@ enum UIPreview {
         },
         Shot(name: "6-settings", scenario: "success") { state, _ in
             state.showSettings()
+        },
+        Shot(name: "7-away", scenario: "success") { state, sim in
+            await driveToReady(state)
+            sim.simulateDisplayCount(0)
+            await Simulation.waitUntil { state.screen == .away }
+            sim.advanceClock(by: 3 * 3600 + 12 * 60)
+            await Simulation.waitUntil { state.awayDurationText.contains("3") }
+        },
+        Shot(name: "8-onboarding", scenario: "success") { state, _ in
+            state.replayOnboarding()
         }
     ]
 

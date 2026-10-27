@@ -495,7 +495,7 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     }
 
     func authorizationSummary() async -> String {
-        notificationAuthorized ? "已允许 · 横幅（模拟）" : "被拒绝（模拟）"
+        notificationAuthorized ? L("已允许 · 横幅（模拟）") : L("被拒绝（模拟）")
     }
 
     // MARK: - LoginItemManaging

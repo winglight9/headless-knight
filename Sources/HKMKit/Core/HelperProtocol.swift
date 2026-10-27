@@ -80,15 +80,15 @@ public enum HelperError: Error, LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .notInstalled:
-            return "后台服务没有安装，改系统设置需要它"
+            return L("后台服务没有安装，改系统设置需要它")
         case let .connectionFailed(message):
-            return "连不上后台服务：\(message)"
+            return L("连不上后台服务：{0}", message)
         case let .protocolViolation(message):
-            return "后台服务返回了无法解析的数据：\(message)"
+            return L("后台服务返回了无法解析的数据：{0}", message)
         case let .remote(message):
-            return "后台服务执行失败：\(message)"
+            return L("后台服务执行失败：{0}", message)
         case .timeout:
-            return "后台服务响应超时"
+            return L("后台服务响应超时")
         }
     }
 }

@@ -115,11 +115,11 @@ public enum NotificationTestResult: Sendable, Equatable {
     /// 设置页那一行状态。不堆小字，一句说完。
     public var summary: String {
         switch self {
-        case .shown: "已弹出 · 就在右上角"
-        case .delivered: "已发出 · 看右上角"
-        case .suppressed: "被系统挡掉了 · 看专注模式"
-        case .notAuthorized: "没给通知权限 · 去系统设置里打开"
-        case .failed(let reason): "发不出去：\(reason)"
+        case .shown: L("已弹出 · 就在右上角")
+        case .delivered: L("已发出 · 看右上角")
+        case .suppressed: L("被系统挡掉了 · 看专注模式")
+        case .notAuthorized: L("没给通知权限 · 去系统设置里打开")
+        case .failed(let reason): L("发不出去：{0}", reason)
         }
     }
 }

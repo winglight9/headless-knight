@@ -36,7 +36,7 @@ struct LocalizationTests {
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
             for match in pattern.matches(in: text, range: range) {
                 guard let captured = Range(match.range(at: 1), in: text) else { continue }
-                keys.insert(String(text[captured]))
+                keys.insert(Loc.unescape(String(text[captured])))
             }
         }
         return keys

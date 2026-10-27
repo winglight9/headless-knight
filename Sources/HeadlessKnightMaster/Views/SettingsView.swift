@@ -1,14 +1,15 @@
+import HKMKit
 import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(status: .settings, title: "设置", onClose: { state.dismissSettings() }) {
+        PopupScaffold(status: .settings, title: L("设置"), onClose: { state.dismissSettings() }) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     SettingsRow {
-                        Text("开机自启")
+                        Text(L("开机自启"))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.ink)
                     } trailing: {
@@ -18,12 +19,12 @@ struct SettingsView: View {
                     }
                     HairlineDivider()
                     SettingsRow {
-                        Text("拔线后等待")
+                        Text(L("拔线后等待"))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.ink)
                     } trailing: {
                         Button(action: { state.cycleSleepDelay() }) {
-                            Text("\(state.sleepDelaySeconds) 秒 ›")
+                            Text(L("{0} 秒 ›", state.sleepDelaySeconds))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.secondaryInk)
                         }
@@ -32,10 +33,10 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("增强模式")
+                            Text(L("增强模式"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text("机器连续醒着 5 分钟，又没结束外出，就再睡一次")
+                            Text(L("机器连续醒着 5 分钟，又没结束外出，就再睡一次"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -48,10 +49,10 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("没有内建屏")
+                            Text(L("没有内建屏"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text("拆掉屏的机器勾上，否则拔了线可能不睡")
+                            Text(L("拆掉屏的机器勾上，否则拔了线可能不睡"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -64,7 +65,7 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("通知")
+                            Text(L("通知"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
                             Text(state.notificationStatus)
@@ -73,7 +74,7 @@ struct SettingsView: View {
                         }
                     } trailing: {
                         Button(action: { state.sendTestNotification() }) {
-                            Text("试一下 ›")
+                            Text(L("试一下 ›"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.secondaryInk)
                         }
@@ -83,17 +84,17 @@ struct SettingsView: View {
                     // 红字是「有件事需要你处理」，那就得能点。以前这里只有一个
                     // Text，用户点了半天以为坏了。
                     SettingsRow {
-                        Text("后台服务")
+                        Text(L("后台服务"))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.ink)
                     } trailing: {
                         if state.helperInstalled {
-                            Text("已安装")
+                            Text(L("已安装"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.green)
                         } else {
                             Button(action: { state.installHelper() }) {
-                                Text(state.isBusy ? "安装中…" : "未安装 · 点这里安装 ›")
+                                Text(state.isBusy ? L("安装中…") : L("未安装 · 点这里安装 ›"))
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.red)
                             }
@@ -103,7 +104,7 @@ struct SettingsView: View {
                     }
                     HairlineDivider()
                     SettingsRow {
-                        Text("重新查看引导")
+                        Text(L("重新查看引导"))
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.ink)
                     } trailing: {
@@ -117,18 +118,18 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("退出无头骑士大师")
+                            Text(L("退出无头骑士大师"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
                             if state.isAwayPhase {
-                                Text("会先结束外出、把设置恢复原样")
+                                Text(L("会先结束外出、把设置恢复原样"))
                                     .font(.system(size: 10))
                                     .foregroundStyle(Theme.tertiaryInk)
                             }
                         }
                     } trailing: {
                         Button(action: { state.quitApp() }) {
-                            Text("退出 ›")
+                            Text(L("退出 ›"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.secondaryInk)
                         }
@@ -138,7 +139,7 @@ struct SettingsView: View {
                 }
                 .padding(.top, 6)
 
-                TinyText(text: "无头骑士大师 \(state.appVersion)　·　⌘Q 也可以退出", alignment: .center)
+                TinyText(text: L("无头骑士大师 {0}　·　⌘Q 也可以退出", state.appVersion), alignment: .center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 22)
             }

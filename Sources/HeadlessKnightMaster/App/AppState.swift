@@ -70,6 +70,17 @@ public final class AppState: ObservableObject {
     @Published public private(set) var closingStep: String?
     @Published public private(set) var unplugCountdown: Int?
     @Published public private(set) var failedItems: [FailedItem] = []
+    /// 这一趟蓝牙到底怎么了。
+    ///
+    /// 以前 `AwayView` 是在 `completedActions` 里找「关闭了蓝牙」这句中文来判断的——
+    /// 文案一进英文表就再也匹配不上，状态行会凭空少半句。状态就该是枚举。
+    public enum BluetoothOutcome: Sendable {
+        case untouched
+        case turnedOff
+        case alreadyOff
+    }
+
+    @Published public private(set) var bluetoothOutcome: BluetoothOutcome = .untouched
     @Published public private(set) var completedActions: [String] = []
     /// 「关闭程序」那条在清单里的位置。
     ///
@@ -441,8 +452,8 @@ public final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let result = await self.deps.notifier.sendTest(
-                title: "通知是通的",
-                body: "增强模式到点时会这样提醒你：30 秒后强制睡眠"
+                title: L("通知是通的"),
+                body: L("增强模式到点时会这样提醒你：30 秒后强制睡眠")
             )
             self.notificationStatus = result.summary
             HKMLog.info("试一下通知：\(result.summary)")
@@ -673,6 +684,7 @@ public final class AppState: ObservableObject {
         completedActions = []
         killSummaryIndex = nil
         bluetoothMarkedDone = false
+        bluetoothOutcome = .untouched
     }
 
     /// 真正的外出流程。测试和 `--simulate-away` 直接 await 它。
@@ -708,7 +720,7 @@ public final class AppState: ObservableObject {
         resetCompletedActions()
 
         // L1 first: without this nothing else matters.
-        step("锁定睡眠设置")
+        step(L("锁定睡眠设置"))
         let powerFailures = await deps.power.applyAwaySettings(
             current: snapshot.pmset,
             cancelScheduledWakes: !snapshot.scheduledWake.isEmpty
@@ -728,7 +740,7 @@ public final class AppState: ObservableObject {
 
 
         // Time Machine 是优化项：没开备份就直接跳过，没关成也不许阻断。
-        step("暂停 Time Machine")
+        step(L("暂停 Time Machine"))
         let timeMachineOutcome = await deps.timeMachine.disable()
         snapshot.timeMachineEnabled = timeMachineOutcome.didDisable
         if let failure = timeMachineOutcome.failure {
@@ -741,7 +753,7 @@ public final class AppState: ObservableObject {
             narrate("[3/8] 暂停 Time Machine… 跳过（无备份目标）")
         }
 
-        step("关闭共享服务")
+        step(L("关闭共享服务"))
         let sharingFailures = await deps.sharing.disableAll()
         failures += sharingFailures
         if !snapshot.sharing.isEmpty, sharingFailures.isEmpty {
@@ -753,8 +765,9 @@ public final class AppState: ObservableObject {
                 : "[4/8] 关闭共享服务… ✗ 不影响睡眠"
         )
 
-        step("关闭蓝牙")
+        step(L("关闭蓝牙"))
         if snapshot.bluetoothPower == 0 {
+            bluetoothOutcome = .alreadyOff
             done(L("蓝牙本来就关着"))
             narrate("[5/8] 关闭蓝牙… 跳过（本来就关着）")
         } else if let reason = await deps.bluetooth.setPower(false) {
@@ -762,13 +775,14 @@ public final class AppState: ObservableObject {
             failures.append(FailedItem(title: "蓝牙", detail: detail))
             narrate("[5/8] 关闭蓝牙… ✗ \(detail)")
         } else {
+            bluetoothOutcome = .turnedOff
             done(L("关闭了蓝牙"))
             bluetoothMarkedDone = true
             narrate("[5/8] 关闭蓝牙… ✓")
         }
 
         // L2: quit the processes that hold sleep assertions.
-        step("退出阻止睡眠的程序")
+        step(L("退出阻止睡眠的程序"))
         let killResult = await killAll()
         killedCount = killResult.count
         failures += killResult.failures
@@ -783,7 +797,7 @@ public final class AppState: ObservableObject {
         }
         narrate(killResult.narration)
 
-        step("关闭网络唤醒")
+        step(L("关闭网络唤醒"))
         let wompFailed = failures.contains { $0.title == "睡眠设置 womp" }
         if snapshot.pmset["womp"] == 0 {
             done(L("网络唤醒本来就关着"))
@@ -933,6 +947,7 @@ public final class AppState: ObservableObject {
             if !bluetoothMarkedDone {
                 completedActions.append(L("关闭了蓝牙"))
                 bluetoothMarkedDone = true
+                bluetoothOutcome = .turnedOff
             }
             narrate("→ 蓝牙已由用户关闭")
         }
@@ -1122,7 +1137,7 @@ public final class AppState: ObservableObject {
         case .away:
             if !detached || userPresent, !didNotifyReturn {
                 didNotifyReturn = true
-                deps.notifier.post(title: "欢迎回来", body: "别忘了结束外出模式")
+                deps.notifier.post(title: L("欢迎回来"), body: L("别忘了结束外出模式"))
             }
         default:
             break
@@ -1351,7 +1366,7 @@ public final class AppState: ObservableObject {
                 didNotifyReturn = false
             } else {
                 didNotifyReturn = true
-                deps.notifier.post(title: "欢迎回来", body: "别忘了结束外出模式")
+                deps.notifier.post(title: L("欢迎回来"), body: L("别忘了结束外出模式"))
             }
             startTicker()
             return
@@ -1393,7 +1408,7 @@ public final class AppState: ObservableObject {
         // 手动那次不弹：人就在屏幕前看着结果，再弹一条纯属打扰。
         if !manual, !didPostSleepFailure {
             didPostSleepFailure = true
-            deps.notifier.post(title: "没能进入睡眠", body: "电脑还醒着：\(reason)")
+            deps.notifier.post(title: L("没能进入睡眠"), body: L("电脑还醒着：{0}", reason))
         }
         if !fromWatchdog, !manual {
             startSleepRetryWatchdog()
@@ -1557,8 +1572,8 @@ public final class AppState: ObservableObject {
             didWarnRemoteLogin = true
             HKMLog.info("增强模式：有远程登录（\(remote.joined(separator: "；"))），不强制睡眠")
             deps.notifier.post(
-                title: "没有强制睡眠",
-                body: "有人正在远程登录这台电脑，怕把对方的工作弄断。"
+                title: L("没有强制睡眠"),
+                body: L("有人正在远程登录这台电脑，怕把对方的工作弄断"),
             )
             return
         }
@@ -1570,10 +1585,10 @@ public final class AppState: ObservableObject {
         awakeAccumulated = 0
         awakeSeconds = 0
         deps.notifier.post(
-            title: "\(seconds) 秒后强制睡眠",
+            title: L("{0} 秒后强制睡眠", seconds),
             // 「要留在电脑前」只对「人回来了」成立。这台机器也常被远程连着用，
             // 那时候人不在电脑前，却说「留在电脑前」——他看完不知道该干嘛。
-            body: "外出模式还开着，机器一直醒着。不想让它睡，就点开无头骑士大师"
+            body: L("外出模式还开着，机器一直醒着。不想让它睡，就点开无头骑士大师")
         )
         startCountdown(seconds: seconds, purpose: .forceSleep) { [weak self] in
             self?.runForcedSleep()

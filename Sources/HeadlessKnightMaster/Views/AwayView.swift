@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 struct AwayView: View {
@@ -7,34 +8,34 @@ struct AwayView: View {
     /// 快照值，两个分支都可能是假的。现在只说我们真的验证过的事。
     private var statusLine: String {
         var parts: [String] = []
-        if state.completedActions.contains("关闭了蓝牙") {
-            parts.append("蓝牙已关闭")
-        } else if state.completedActions.contains("蓝牙本来就关着") {
-            parts.append("蓝牙本来就关着")
+        switch state.bluetoothOutcome {
+        case .turnedOff: parts.append(L("蓝牙已关闭"))
+        case .alreadyOff: parts.append(L("蓝牙本来就关着"))
+        case .untouched: break
         }
         switch state.sleepOutcome {
         case .slept:
-            parts.append("系统已进入睡眠")
+            parts.append(L("系统已进入睡眠"))
         case .requesting:
-            parts.append("正在让系统睡眠…")
+            parts.append(L("正在让系统睡眠…"))
         case let .failed(reason):
-            parts.append("系统没有睡着：\(reason)")
+            parts.append(L("系统没有睡着：{0}", reason))
         case let .unverified(reason):
-            parts.append("没法确认睡着：\(reason)")
+            parts.append(L("没法确认睡着：{0}", reason))
         case .idle:
-            parts.append(state.session?.sleepRequestedAt != nil ? "睡眠请求已发出" : "还没请求睡眠")
+            parts.append(state.session?.sleepRequestedAt != nil ? L("睡眠请求已发出") : L("还没请求睡眠"))
         }
         return parts.joined(separator: " · ")
     }
 
     var body: some View {
-        PopupScaffold(status: .away, title: "无头骑士大师", onGear: { state.showSettings() }) {
+        PopupScaffold(status: .away, title: L("无头骑士大师"), onGear: { state.showSettings() }) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    Text("外出中")
+                    Text(L("外出中"))
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    Text("已 \(state.awayDurationText)")
+                    Text(L("已 {0}", state.awayDurationText))
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.amber)
                         .padding(.top, 5)
@@ -49,7 +50,7 @@ struct AwayView: View {
                 .padding(.bottom, 20)
 
                 PopupButton(
-                    title: state.isEndingAway ? "正在恢复设置…" : "结束外出模式",
+                    title: state.isEndingAway ? L("正在恢复设置…") : L("结束外出模式"),
                     style: .ghost,
                     isEnabled: !state.isBusy && !state.isEndingAway
                 ) {
@@ -62,7 +63,7 @@ struct AwayView: View {
 
                 VStack(spacing: 0) {
                     HairlineDivider()
-                    NoteText(text: "点开即统计，不用等")
+                    NoteText(text: L("点开即统计，不用等"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 12)
                 }
@@ -83,16 +84,16 @@ struct AwayView: View {
                 Circle()
                     .fill(Theme.red)
                     .frame(width: 6, height: 6)
-                Text("\(seconds) 秒后强制睡眠")
+                Text(L("{0} 秒后强制睡眠", seconds))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.red)
             }
-            Text("机器已经醒着 \(state.awakeMinutesText)，没人在的话它会一直烧电")
+            Text(L("机器已经醒着 {0}，没人在的话它会一直烧电", state.awakeMinutesText))
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: { state.skipForcedSleepOnce() }) {
-                Text("这次不睡")
+                Text(L("这次不睡"))
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryInk)
             }
@@ -111,11 +112,11 @@ struct AwayView: View {
 
 struct AuditingView: View {
     var body: some View {
-        PopupScaffold(status: .auditing, title: "无头骑士大师") {
+        PopupScaffold(status: .auditing, title: L("无头骑士大师")) {
             VStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                NoteText(text: "正在统计唤醒记录，并把设置恢复原样", alignment: .center)
+                NoteText(text: L("正在统计唤醒记录，并把设置恢复原样"), alignment: .center)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 44)

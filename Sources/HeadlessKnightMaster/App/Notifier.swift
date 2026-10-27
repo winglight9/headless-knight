@@ -83,7 +83,7 @@ public final class Notifier {
     /// `add` 全都一声不吭地成功。用户看到的就是「点了没反应」。
     /// 所以发完要分两处核对——前台代理有没有真的展示它，系统有没有收进通知中心。
     public func sendTest(title: String, body: String) async -> NotificationTestResult {
-        guard let center else { return .failed("没有 bundle id，弹不了") }
+        guard let center else { return .failed(L("没有 bundle id，弹不了")) }
         guard await ensureAuthorization() else { return .notAuthorized }
 
         let identifier = UUID().uuidString
@@ -130,23 +130,23 @@ public final class Notifier {
     /// 调用过（触发点只有「欢迎回来」和「睡眠失败」），但光靠日志没法证明。
     /// 把授权状态摆到界面上，再给一个「试一下」，就不用猜了。
     public func authorizationSummary() async -> String {
-        guard let center else { return "没有 bundle id，弹不了" }
+        guard let center else { return L("没有 bundle id，弹不了") }
         let settings = await center.notificationSettings()
         switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             let style: String
             switch settings.alertStyle {
-            case .banner: style = "横幅"
-            case .alert: style = "提醒"
-            default: style = "横幅已关闭"
+            case .banner: style = L("横幅")
+            case .alert: style = L("提醒")
+            default: style = L("横幅已关闭")
             }
-            return "已允许 · \(style)"
+            return L("已允许 · {0}", style)
         case .denied:
-            return "被拒绝（去系统设置里打开）"
+            return L("被拒绝（去系统设置里打开）")
         case .notDetermined:
-            return "还没问过"
+            return L("还没问过")
         @unknown default:
-            return "未知"
+            return L("未知")
         }
     }
 }

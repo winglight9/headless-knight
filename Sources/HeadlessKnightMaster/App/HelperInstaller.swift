@@ -10,9 +10,9 @@ enum HelperInstaller {
         var errorDescription: String? {
             switch self {
             case .missingBundledHelper:
-                return "安装包里缺少后台服务二进制"
+                return L("安装包里缺少后台服务二进制")
             case let .authorizationFailed(message):
-                return "授权失败：\(message)"
+                return L("授权失败：{0}", message)
             }
         }
     }
@@ -37,7 +37,7 @@ enum HelperInstaller {
         // 脚本跑完不等于服务能用了：最后一步 `launchctl bootstrap` 之后，进程起来、
         // 建好 socket 还要几百毫秒。不在这里等，紧接着的每一条命令都会失败。
         guard HelperClient().waitUntilReachable(timeout: 6) else {
-            throw InstallError.authorizationFailed("装好了，但后台服务没能启动起来")
+            throw InstallError.authorizationFailed(L("装好了，但后台服务没能启动起来"))
         }
         HKMLog.info("后台服务安装完成")
     }
