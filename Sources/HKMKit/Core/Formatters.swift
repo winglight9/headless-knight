@@ -5,40 +5,40 @@ public enum DurationFormatter {
     public static func humanized(seconds: Int) -> String {
         let total = max(0, seconds)
         if total < 60 {
-            return "\(total) 秒"
+            return L("{0} 秒", total)
         }
         let minutes = total / 60
         if minutes < 60 {
-            return "\(minutes) 分钟"
+            return L("{0} 分钟", minutes)
         }
         let hours = minutes / 60
         let remainder = minutes % 60
         if remainder == 0 {
-            return "\(hours) 小时"
+            return L("{0} 小时", hours)
         }
-        return "\(hours) 小时 \(remainder) 分"
+        return L("{0} 小时 {1} 分", hours, remainder)
     }
 
     /// Compact form used inside lists: "49 小时" / "2 分钟" / "刚刚"
     public static func compact(seconds: Int) -> String {
         let total = max(0, seconds)
         if total < 60 {
-            return "刚刚"
+            return L("刚刚")
         }
         let minutes = total / 60
         if minutes < 60 {
-            return "\(minutes) 分钟"
+            return L("{0} 分钟", minutes)
         }
-        return "\(minutes / 60) 小时"
+        return L("{0} 小时", minutes / 60)
     }
 
     /// "2 分钟" style used for wake durations ("屏幕亮了 2 分钟").
     public static func wakeDuration(seconds: Int) -> String {
         let total = max(0, seconds)
         if total < 60 {
-            return "\(total) 秒"
+            return L("{0} 秒", total)
         }
-        return "\(total / 60) 分钟"
+        return L("{0} 分钟", total / 60)
     }
 }
 

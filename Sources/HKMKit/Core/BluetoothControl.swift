@@ -158,6 +158,8 @@ public struct BluetoothControl: Sendable {
     public func setPower(_ on: Bool) async -> String? {
         let target = on ? 1 : 0
         let action = on ? "打开" : "关闭"
+        // 日志里用中文没问题，但返回给用户的那两句要走英文表。
+        let actionText = L(on ? "打开" : "关闭")
 
         if DryRun.isEnabled {
             DryRun.log("不会真的\(action)蓝牙")
@@ -199,9 +201,9 @@ public struct BluetoothControl: Sendable {
         }
 
         if !BluetoothControl.hasBluetoothPermission {
-            return "系统没给蓝牙权限，没法自动\(action)蓝牙"
+            return L("系统没给蓝牙权限，没法自动{0}蓝牙", actionText)
         }
-        return "蓝牙没能\(action)，控制器状态没有变化"
+        return L("蓝牙没能{0}，控制器状态没有变化", actionText)
     }
 
     /// 轮询直到 `system_profiler` 报告目标状态。

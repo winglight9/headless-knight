@@ -147,7 +147,7 @@ public struct PowerSettings: Sendable {
             do {
                 _ = try await executor.perform(.pmsetSet, arguments: ["key": key, "value": "\(value)"])
             } catch {
-                HKMLog.error("设置 \(key) 失败：\(error.localizedDescription)")
+                HKMLog.error(L("设置 {0} 失败：{1}", key, error.localizedDescription))
                 // 后台服务挂了的时候，后面四个键只会同样失败，而且每次都要等超时。
                 // 这时候直接把剩下的键合并成一条，用户看到一条清楚的话，而不是五条。
                 if PowerSettings.isHelperUnavailable(error) {
@@ -162,7 +162,7 @@ public struct PowerSettings: Sendable {
             do {
                 _ = try await executor.perform(.pmsetScheduleCancelAll)
             } catch {
-                HKMLog.error("清空定时唤醒失败：\(error.localizedDescription)")
+                HKMLog.error(L("清空定时唤醒失败：{0}", error.localizedDescription))
                 failures.append(FailedItem(title: "定时唤醒任务", error: error, severity: .optional))
             }
         }
@@ -190,7 +190,7 @@ public struct PowerSettings: Sendable {
             do {
                 _ = try await executor.perform(.pmsetSet, arguments: ["key": key, "value": "\(value)"])
             } catch {
-                HKMLog.error("恢复 \(key) 失败：\(error.localizedDescription)")
+                HKMLog.error(L("恢复 {0} 失败：{1}", key, error.localizedDescription))
                 failures.append(FailedItem(title: "恢复 \(key)", error: error, severity: .optional))
             }
         }
@@ -203,7 +203,7 @@ public struct PowerSettings: Sendable {
                     arguments: ["key": "displaysleep", "value": "\(battery)", "scope": "b"]
                 )
             } catch {
-                HKMLog.error("恢复电池的 displaysleep 失败：\(error.localizedDescription)")
+                HKMLog.error(L("恢复电池的 displaysleep 失败：{0}", error.localizedDescription))
                 failures.append(FailedItem(title: "恢复电池关屏时间", error: error, severity: .optional))
             }
         }
@@ -258,7 +258,7 @@ public struct PowerSettings: Sendable {
         // 只信它就会把「睡了」报成「没睡」——这正是要修的那个 bug。
         let log = await readPowerLog()
         guard !log.isEmpty else {
-            HKMLog.error("读不到电源日志，无法确认是否真的睡了")
+            HKMLog.error(L("读不到电源日志，无法确认是否真的睡了"))
             return .unknown
         }
         let entries = WakeAuditor.parse(log)

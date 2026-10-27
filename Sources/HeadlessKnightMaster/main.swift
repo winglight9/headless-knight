@@ -56,6 +56,15 @@ if arguments.contains("--simulate-away") || arguments.contains("--list-scenarios
     exit(await runSimulateAway(arguments: arguments))
 }
 
+@MainActor
+func runUIPreview() async -> Int32 {
+    await UIPreview.run(arguments)
+}
+
+if arguments.contains("--render-ui") {
+    exit(await runUIPreview())
+}
+
 if arguments.contains("--diagnose") {
     exit(Diagnostics.run())
 }

@@ -15,13 +15,13 @@ struct RootView: View {
                     .stroke(Theme.listBorder, lineWidth: 0.5)
             )
             .alert(
-                "没能完成",
+                L("没能完成"),
                 isPresented: Binding(
                     get: { state.errorMessage != nil },
                     set: { if !$0 { state.errorMessage = nil } }
                 ),
                 actions: {
-                    Button("知道了") { state.errorMessage = nil }
+                    Button(L("知道了")) { state.errorMessage = nil }
                 },
                 message: {
                     Text(state.errorMessage ?? "")

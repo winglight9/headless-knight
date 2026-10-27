@@ -6,7 +6,7 @@ struct CleanReportView: View {
     let report: Report
 
     var body: some View {
-        PopupScaffold(status: .done, title: "无头骑士大师") {
+        PopupScaffold(status: .done, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Text(report.headline)
@@ -21,7 +21,7 @@ struct CleanReportView: View {
                 .padding(.top, 42)
                 .padding(.bottom, 30)
 
-                PopupButton(title: "完成", isEnabled: !state.isBusy) {
+                PopupButton(title: L("完成"), isEnabled: !state.isBusy) {
                     state.acknowledgeReport()
                 }
                 .padding(.top, 4)
@@ -36,17 +36,17 @@ struct CleanReportView: View {
 
     @ViewBuilder
     private var detailLines: some View {
-        DetailLine(label: "区间", value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
-        DetailLine(label: "时长", value: report.durationText)
-        DetailLine(label: "掉电", value: report.batteryText)
-        DetailLine(label: "暗唤醒", value: "\(report.darkWakeCount) 次")
-        DetailLine(label: "通知唤醒", value: "\(report.notificationWakeCount) 次")
-        DetailLine(label: "真实唤醒", value: "\(report.realWakeCount) 次")
+        DetailLine(label: L("区间"), value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
+        DetailLine(label: L("时长"), value: report.durationText)
+        DetailLine(label: L("掉电"), value: report.batteryText)
+        DetailLine(label: L("暗唤醒"), value: L("{0} 次", report.darkWakeCount))
+        DetailLine(label: L("通知唤醒"), value: L("{0} 次", report.notificationWakeCount))
+        DetailLine(label: L("真实唤醒"), value: L("{0} 次", report.realWakeCount))
         if report.rebooted {
-            DetailLine(label: "重启", value: "期间重启过，唤醒记录只覆盖重启之后")
+            DetailLine(label: L("重启"), value: L("期间重启过，唤醒记录只覆盖重启之后"))
         }
         if !report.failedItems.isEmpty {
-            DetailLine(label: "未完成", value: report.failedItems.joined(separator: "；"))
+            DetailLine(label: L("未完成"), value: report.failedItems.joined(separator: L("；")))
         }
     }
 }
@@ -56,7 +56,7 @@ struct AnomalyReportView: View {
     let report: Report
 
     var body: some View {
-        PopupScaffold(status: .attention, title: "无头骑士大师") {
+        PopupScaffold(status: .attention, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Text(report.headline)
@@ -85,7 +85,7 @@ struct AnomalyReportView: View {
                     .padding(.top, 12)
                 }
 
-                PopupButton(title: "完成", isEnabled: !state.isBusy) {
+                PopupButton(title: L("完成"), isEnabled: !state.isBusy) {
                     state.acknowledgeReport()
                 }
                 .padding(.top, 12)
@@ -100,22 +100,22 @@ struct AnomalyReportView: View {
 
     @ViewBuilder
     private var detailLines: some View {
-        DetailLine(label: "区间", value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
-        DetailLine(label: "时长", value: report.durationText)
-        DetailLine(label: "掉电", value: report.batteryText)
-        DetailLine(label: "暗唤醒", value: "\(report.darkWakeCount) 次")
-        DetailLine(label: "通知唤醒", value: "\(report.notificationWakeCount) 次")
+        DetailLine(label: L("区间"), value: "\(ClockFormatter.timeOfDay(report.startedAt)) – \(ClockFormatter.timeOfDay(report.endedAt))")
+        DetailLine(label: L("时长"), value: report.durationText)
+        DetailLine(label: L("掉电"), value: report.batteryText)
+        DetailLine(label: L("暗唤醒"), value: L("{0} 次", report.darkWakeCount))
+        DetailLine(label: L("通知唤醒"), value: L("{0} 次", report.notificationWakeCount))
         ForEach(report.realWakes) { wake in
-            DetailLine(label: "真实唤醒", value: "\(wake.headlineText)（\(wake.reason)）")
+            DetailLine(label: L("真实唤醒"), value: L("{0}（{1}）", wake.headlineText, wake.reason))
         }
         if !report.sleptAtAll {
-            DetailLine(label: "睡眠", value: "整段时间没有一条进入睡眠的记录")
+            DetailLine(label: L("睡眠"), value: L("整段时间没有一条进入睡眠的记录"))
         }
         if report.rebooted {
-            DetailLine(label: "重启", value: "期间重启过，唤醒记录只覆盖重启之后")
+            DetailLine(label: L("重启"), value: L("期间重启过，唤醒记录只覆盖重启之后"))
         }
         if !report.failedItems.isEmpty {
-            DetailLine(label: "未完成", value: report.failedItems.joined(separator: "；"))
+            DetailLine(label: L("未完成"), value: report.failedItems.joined(separator: L("；")))
         }
     }
 }

@@ -81,7 +81,7 @@ public struct SharingControl: Sendable {
             do {
                 _ = try await executor.perform(.launchctlDisable, arguments: ["label": label])
             } catch {
-                HKMLog.error("关闭共享服务 \(label) 失败：\(error.localizedDescription)")
+                HKMLog.error(L("关闭共享服务 {0} 失败：{1}", label, error.localizedDescription))
                 failures.append(FailedItem(title: "共享服务", error: error, severity: .optional))
                 // 后台服务不可用时剩下的 label 只会同样失败，而且每次都要等超时。
                 if PowerSettings.isHelperUnavailable(error) { return failures }
@@ -92,7 +92,7 @@ public struct SharingControl: Sendable {
             do {
                 _ = try await executor.perform(.launchctlBootout, arguments: ["label": label])
             } catch {
-                HKMLog.error("停止共享服务 \(label) 失败（不影响睡眠）：\(error.localizedDescription)")
+                HKMLog.error(L("停止共享服务 {0} 失败（不影响睡眠）：{1}", label, error.localizedDescription))
             }
         }
         return failures
@@ -105,7 +105,7 @@ public struct SharingControl: Sendable {
                 _ = try await executor.perform(.launchctlEnable, arguments: ["label": label])
                 _ = try await executor.perform(.launchctlBootstrap, arguments: ["label": label])
             } catch {
-                HKMLog.error("恢复共享服务 \(label) 失败：\(error.localizedDescription)")
+                HKMLog.error(L("恢复共享服务 {0} 失败：{1}", label, error.localizedDescription))
                 failures.append(FailedItem(title: "恢复共享服务", error: error, severity: .optional))
             }
         }

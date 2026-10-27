@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 struct HomeView: View {
@@ -5,16 +6,16 @@ struct HomeView: View {
 
     var body: some View {
         PopupScaffold(
-            status: state.sleepDisabled ? StatusTag(text: "睡眠被锁", color: Theme.amber) : .home,
-            title: "无头骑士大师",
+            status: state.sleepDisabled ? StatusTag(text: L("睡眠被锁"), color: Theme.amber) : .home,
+            title: L("无头骑士大师"),
             onGear: { state.showSettings() }
         ) {
             VStack(spacing: 0) {
                 VStack(spacing: 5) {
-                    Text("在家")
+                    Text(L("在家"))
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    NoteText(text: state.sleepDisabled ? "系统睡眠被锁着（disablesleep=1）" : "系统可以正常睡眠")
+                    NoteText(text: state.sleepDisabled ? L("系统睡眠被锁着（disablesleep=1）") : L("系统可以正常睡眠"))
                 }
                 .padding(.top, 30)
                 .padding(.bottom, 22)
@@ -24,10 +25,10 @@ struct HomeView: View {
                 if state.pendingRestore {
                     WarningBox {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("上次没能恢复原设置")
+                            Text(L("上次没能恢复原设置"))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Theme.ink)
-                            Text("睡眠设置还停留在外出状态，先恢复，再出门")
+                            Text(L("睡眠设置还停留在外出状态，先恢复，再出门"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .lineSpacing(2)
@@ -35,13 +36,13 @@ struct HomeView: View {
                     }
                     .padding(.bottom, 10)
 
-                    PopupButton(title: "重试恢复", isEnabled: !state.isBusy) {
+                    PopupButton(title: L("重试恢复"), isEnabled: !state.isBusy) {
                         state.retryRestore()
                     }
                     .padding(.bottom, 10)
                 }
 
-                PopupButton(title: "开始外出模式", isEnabled: !state.isBusy) {
+                PopupButton(title: L("开始外出模式"), isEnabled: !state.isBusy) {
                     state.beginAway()
                 }
 
@@ -49,11 +50,11 @@ struct HomeView: View {
                     HairlineDivider()
                     if let report = state.lastReport {
                         VStack(alignment: .leading, spacing: 7) {
-                            NoteText(text: "上次外出 \(report.durationText)")
+                            NoteText(text: L("上次外出 {0}", report.durationText))
                             HStack(spacing: 12) {
-                                Text("后台唤醒 \(report.backgroundWakeCount) 次")
+                                Text(L("后台唤醒 {0} 次", report.backgroundWakeCount))
                                     .foregroundStyle(Theme.tertiaryInk)
-                                Text("真实唤醒 \(report.realWakeCount) 次")
+                                Text(L("真实唤醒 {0} 次", report.realWakeCount))
                                     .foregroundStyle(report.realWakeCount > 0 ? Theme.red : Theme.tertiaryInk)
                             }
                             .font(.system(size: 11))
@@ -61,7 +62,7 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 13)
                     } else {
-                        NoteText(text: "还没有外出记录")
+                        NoteText(text: L("还没有外出记录"))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 13)
                     }

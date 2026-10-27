@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 struct ReadyToUnplugView: View {
@@ -32,27 +33,27 @@ struct ReadyToUnplugView: View {
     private var subtitle: String {
         switch problem {
         case let .awake(reason):
-            return "电脑还醒着：\(reason)"
+            return L("电脑还醒着：{0}", reason)
         case .unknown:
-            return "读不到电源日志，先别急着装包"
+            return L("读不到电源日志，先别急着装包")
         case .none:
             if let remaining = state.unplugCountdown, state.displaysDetached {
-                return "\(remaining) 秒后自动睡眠"
+                return L("{0} 秒后自动睡眠", remaining)
             }
-            return "拔线后 \(state.sleepDelaySeconds) 秒自动睡眠"
+            return L("拔线后 {0} 秒自动睡眠", state.sleepDelaySeconds)
         }
     }
 
     private var headline: String {
         switch problem {
-        case .awake: return "还没能睡着"
-        case .unknown: return "还没能确认睡着"
-        case .none: return "可以拔掉显示器了"
+        case .awake: return L("还没能睡着")
+        case .unknown: return L("还没能确认睡着")
+        case .none: return L("可以拔掉显示器了")
         }
     }
 
     var body: some View {
-        PopupScaffold(status: hasProblem ? .attention : .ready, title: "无头骑士大师") {
+        PopupScaffold(status: hasProblem ? .attention : .ready, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     if !hasProblem {
@@ -106,8 +107,8 @@ struct ReadyToUnplugView: View {
                             // 后台重试只在「线已经拔了」的时候才跑。显示器还插着的时候
                             // 说「会自动重试」是假话——它压根不会重试，试了也只是闪屏。
                             Text(state.displaysDetached
-                                ? "会自动重试，插回显示器就停"
-                                : "拔掉线之后它会自己睡，不用再点")
+                                ? L("会自动重试，插回显示器就停")
+                                : L("拔掉线之后它会自己睡，不用再点"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .lineSpacing(2)
@@ -115,14 +116,14 @@ struct ReadyToUnplugView: View {
                     }
                     .padding(.top, 14)
 
-                    PopupButton(title: "再试一次睡眠", isEnabled: !state.isBusy) {
+                    PopupButton(title: L("再试一次睡眠"), isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
                     .padding(.top, 10)
                 case let .unknown(reason):
                     WarningBox {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("查不到睡眠记录，不代表它没睡。看一眼电量就知道：一夜掉得很少就是睡了")
+                            Text(L("查不到睡眠记录，不代表它没睡。看一眼电量就知道：一夜掉得很少就是睡了"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(Theme.ink)
                                 .lineSpacing(2)
@@ -135,7 +136,7 @@ struct ReadyToUnplugView: View {
                     }
                     .padding(.top, 14)
 
-                    PopupButton(title: "再试一次睡眠", isEnabled: !state.isBusy) {
+                    PopupButton(title: L("再试一次睡眠"), isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
                     .padding(.top, 10)
@@ -149,7 +150,7 @@ struct ReadyToUnplugView: View {
                 // 面板所在的这块屏也就没了，没人看得见它。用户原话：「拔线了这
                 // 界面就看不到了。哈哈哈」。
                 if !hasProblem, !state.displaysDetached {
-                    PopupButton(title: "不拔线，现在就睡", style: .ghost, isEnabled: !state.isBusy) {
+                    PopupButton(title: L("不拔线，现在就睡"), style: .ghost, isEnabled: !state.isBusy) {
                         state.retrySleep()
                     }
                     .padding(.top, 12)
@@ -162,7 +163,7 @@ struct ReadyToUnplugView: View {
                 // 当场改口、并且点不动——否则用户以为没反应，会一直点（日志里
                 // 连着六次蓝牙还原就是这么来的）。
                 PopupButton(
-                    title: state.isEndingAway ? "正在恢复设置…" : "结束外出模式",
+                    title: state.isEndingAway ? L("正在恢复设置…") : L("结束外出模式"),
                     style: .ghost,
                     isEnabled: !state.isEndingAway && !state.isBusy
                 ) {

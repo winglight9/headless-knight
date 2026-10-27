@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 struct BlockedView: View {
@@ -5,9 +6,9 @@ struct BlockedView: View {
 
     private var completedText: String {
         if state.completedActions.isEmpty {
-            return "已经完成的：无"
+            return L("已经完成的：无")
         }
-        return "已经完成的：\n" + state.completedActions.joined(separator: " · ")
+        return L("已经完成的：") + "\n" + state.completedActions.joined(separator: " · ")
     }
 
     /// 只有「后台服务过期」这一种，说的不是「睡不着」而是「改不回来」。
@@ -16,17 +17,17 @@ struct BlockedView: View {
     }
 
     private var headline: String {
-        isHelperOnlyProblem ? "后台服务需要更新" : "有 \(state.criticalFailures.count) 项没能完成"
+        isHelperOnlyProblem ? L("后台服务需要更新") : L("有 {0} 项没能完成", state.criticalFailures.count)
     }
 
     private var subtitle: String {
         isHelperOnlyProblem
-            ? "先更新一次，否则有些设置改不回来"
-            : "现在走的话，电脑可能睡不着"
+            ? L("先更新一次，否则有些设置改不回来")
+            : L("现在走的话，电脑可能睡不着")
     }
 
     var body: some View {
-        PopupScaffold(status: .attention, title: "无头骑士大师") {
+        PopupScaffold(status: .attention, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 6) {
                     Text(headline)
@@ -40,7 +41,7 @@ struct BlockedView: View {
                     ForEach(state.criticalFailures) { item in
                         WarningBox {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(item.title)
+                                Text(item.displayTitle)
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(Theme.ink)
                                 Text(item.detail)
@@ -60,35 +61,35 @@ struct BlockedView: View {
                 // 蓝牙关不掉是唯一「用户自己能立刻解决」的关键项：
                 // 要么给权限，要么在控制中心手动关掉。给个出口，别让他干瞪眼。
                 if state.bluetoothFailure != nil {
-                    TinyText(text: "蓝牙也可以在控制中心手动关掉，关完点「我处理好了」")
+                    TinyText(text: L("蓝牙也可以在控制中心手动关掉，关完点「我处理好了」"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 8)
 
-                    PopupButton(title: "打开蓝牙权限设置", style: .ghost) {
+                    PopupButton(title: L("打开蓝牙权限设置"), style: .ghost) {
                         state.openBluetoothSettings()
                     }
                     .padding(.top, 8)
                 }
 
-                PopupButton(title: "我处理好了", isEnabled: !state.isBusy) {
+                PopupButton(title: L("我处理好了"), isEnabled: !state.isBusy) {
                     state.retryAfterManualFix()
                 }
                 .padding(.top, 16)
 
                 if state.needsHelperInstall {
-                    PopupButton(title: "安装后台服务", isEnabled: !state.isBusy) {
+                    PopupButton(title: L("安装后台服务"), isEnabled: !state.isBusy) {
                         state.installHelperFromBlocked()
                     }
                     .padding(.top, 8)
                 }
 
-                PopupButton(title: "仍然继续", style: .ghost) {
+                PopupButton(title: L("仍然继续"), style: .ghost) {
                     state.continueAnyway()
                 }
                 .padding(.top, 8)
 
                 PopupButton(
-                    title: state.isEndingAway ? "正在恢复设置…" : "算了，恢复原设置",
+                    title: state.isEndingAway ? L("正在恢复设置…") : L("算了，恢复原设置"),
                     style: .ghost,
                     isEnabled: !state.isEndingAway && !state.isBusy
                 ) {
@@ -96,7 +97,7 @@ struct BlockedView: View {
                 }
                 .padding(.top, 8)
 
-                TinyText(text: "选择继续，报告里会标注这次可能没睡成", alignment: .center)
+                TinyText(text: L("选择继续，报告里会标注这次可能没睡成"), alignment: .center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 12)
             }

@@ -1,3 +1,4 @@
+import HKMKit
 import SwiftUI
 
 /// 窗口左上角的状态标签。
@@ -9,16 +10,16 @@ struct StatusTag: Equatable {
     let text: String
     let color: Color
 
-    static let home = StatusTag(text: "在家", color: Theme.green)
-    static let preparing = StatusTag(text: "准备中", color: Theme.amber)
-    static let working = StatusTag(text: "处理中", color: Theme.amber)
-    static let ready = StatusTag(text: "可以拔线", color: Theme.green)
-    static let away = StatusTag(text: "外出中", color: Theme.amber)
-    static let attention = StatusTag(text: "需要处理", color: Theme.red)
-    static let auditing = StatusTag(text: "统计中", color: Theme.amber)
-    static let done = StatusTag(text: "已回来", color: Theme.green)
-    static let settings = StatusTag(text: "设置", color: Theme.grayDot)
-    static let firstRun = StatusTag(text: "首次设置", color: Theme.amber)
+    static let home = StatusTag(text: L("在家"), color: Theme.green)
+    static let preparing = StatusTag(text: L("准备中"), color: Theme.amber)
+    static let working = StatusTag(text: L("处理中"), color: Theme.amber)
+    static let ready = StatusTag(text: L("可以拔线"), color: Theme.green)
+    static let away = StatusTag(text: L("外出中"), color: Theme.amber)
+    static let attention = StatusTag(text: L("需要处理"), color: Theme.red)
+    static let auditing = StatusTag(text: L("统计中"), color: Theme.amber)
+    static let done = StatusTag(text: L("已回来"), color: Theme.green)
+    static let settings = StatusTag(text: L("设置"), color: Theme.grayDot)
+    static let firstRun = StatusTag(text: L("首次设置"), color: Theme.amber)
 }
 
 struct StatusPill: View {
@@ -65,7 +66,7 @@ struct PopupScaffold<Content: View>: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("设置")
+                    .help(L("设置"))
                 }
                 if let onClose {
                     Button(action: onClose) {
@@ -377,7 +378,7 @@ struct DetailDisclosure<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             Button(action: onToggle) {
-                Text(isExpanded ? "收起详情" : "查看详情")
+                Text(isExpanded ? L("收起详情") : L("查看详情"))
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.tertiaryInk)
                     .frame(maxWidth: .infinity)

@@ -42,29 +42,29 @@ public enum BlockerExplainer {
         // 只挡屏幕的断言和「电脑能不能睡」无关，先单独说清楚，
         // 不然用户会以为它才是罪魁祸首。
         if blocker.kind == .displayOnly {
-            return "只让屏幕不灭"
+            return L("只让屏幕不灭")
         }
         let names = blocker.assertionNames.map { $0.lowercased() }
         for rule in nameRules where names.contains(where: { name in rule.needles.contains(where: name.contains) }) {
-            return rule.reason
+            return L(rule.reason)
         }
         return typeReason(blocker.assertionTypes)
     }
 
     static func typeReason(_ types: [String]) -> String {
         if types.contains("PreventSystemSleep") {
-            return "不许电脑睡眠"
+            return L("不许电脑睡眠")
         }
         if types.contains("InternalPreventSleep") {
-            return "系统内部保持唤醒"
+            return L("系统内部保持唤醒")
         }
         if types.contains("PreventUserIdleSystemSleep") || types.contains("NoIdleSleepAssertion") {
-            return "不许电脑空闲睡眠"
+            return L("不许电脑空闲睡眠")
         }
         if types.contains(where: AssertionScanner.displayOnlyTypes.contains) {
-            return "只让屏幕不灭"
+            return L("只让屏幕不灭")
         }
-        return "阻止电脑睡眠"
+        return L("阻止电脑睡眠")
     }
 
     // MARK: - 能怎么办
@@ -75,7 +75,7 @@ public enum BlockerExplainer {
     /// 正式版 / Beta / 企业版 id 都不一样），而 "chrome" 这种片段几乎不会误伤。
     public static func suggestion(for blocker: SleepBlocker) -> String? {
         if blocker.kind == .displayOnly {
-            return "不影响睡眠，可以不管它"
+            return L("不影响睡眠，可以不管它")
         }
         let bundle = (blocker.bundleIdentifier ?? "").lowercased()
         let name = blocker.processName.lowercased()
@@ -85,29 +85,29 @@ public enum BlockerExplainer {
         }
 
         if matches(["netease.uu", "uuremote"]) || name.hasPrefix("uu") {
-            return "在 UU 里关掉「防休眠」，就不用退出它"
+            return L("在 UU 里关掉「防休眠」，就不用退出它")
         }
         if matches(["zoom", "teams", "tencent.meeting", "lark", "dingtalk", "webex"]) {
-            return "会开完它自己就放开了；现在退出等于挂断"
+            return L("会开完它自己就放开了；现在退出等于挂断")
         }
         if matches(["chrome", "edgemac", "brave.browser", "thebrowser.browser", "safari", "firefox", "vivaldi", "opera"]) {
-            return "关掉在放声音的那个标签页就好"
+            return L("关掉在放声音的那个标签页就好")
         }
         if matches(["vlc", "iina", "spotify", "apple.music", "mpv", "quicktime"]) {
-            return "暂停播放就放开了"
+            return L("暂停播放就放开了")
         }
         if matches(["amphetamine", "keepingyouawake", "theine", "caffeine", "jiggler", "owly"]) || name == "caffeinate" {
-            return "这类保活工具直接退出就行"
+            return L("这类保活工具直接退出就行")
         }
         if matches(["docker"]) {
-            return "容器在跑就会一直保活，先停掉容器"
+            return L("容器在跑就会一直保活，先停掉容器")
         }
         if matches(["headlessknight", "machead"]) || name.contains("无头骑士") {
-            return "它和你在做同一件事，退出它"
+            return L("它和你在做同一件事，退出它")
         }
         if name == "electron" {
-            return "某个 Electron 应用在保活，退出它最省事"
+            return L("某个 Electron 应用在保活，退出它最省事")
         }
-        return "退出它，或者在它的设置里关掉保活"
+        return L("退出它，或者在它的设置里关掉保活")
     }
 }

@@ -117,10 +117,16 @@ public struct FailedItem: Codable, Sendable, Equatable, Identifiable {
 
     public var isCritical: Bool { severity == .critical }
 
-    public var summary: String { "\(title)：\(detail)" }
+    /// 这一项的名字，界面上显示用。
+    ///
+    /// `title` 保持中文不动：它同时是判断依据（`title == "蓝牙"`、`title == "后台服务"`），
+    /// 一翻译判断就失效了。英文只发生在显示的这一刻。
+    public var displayTitle: String { L(title) }
+
+    public var summary: String { L("{0}：{1}", displayTitle, detail) }
 
     /// 「可以拔掉显示器了」那一页用的小字，交代不影响睡眠的遗漏。
-    public var optionalNote: String { "\(title) 未完成（不影响睡眠）" }
+    public var optionalNote: String { L("{0} 未完成（不影响睡眠）", displayTitle) }
 
     private enum CodingKeys: String, CodingKey {
         case title, detail, severity

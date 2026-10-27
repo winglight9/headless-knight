@@ -82,7 +82,7 @@ public struct ProcessKiller {
                 HKMLog.info("已强制退出 \(name)(\(pid))")
                 return .forceTerminated
             }
-            return .failed("无法自动退出，它还在阻止睡眠。请手动退出这个程序")
+            return .failed(L("无法自动退出，它还在阻止睡眠。请手动退出这个程序"))
         }
 
         if Darwin.kill(pid, SIGTERM) == 0 {
@@ -97,7 +97,7 @@ public struct ProcessKiller {
                 return .forceTerminated
             }
         }
-        return .failed("无法终止这个进程，它还在阻止睡眠")
+        return .failed(L("无法终止这个进程，它还在阻止睡眠"))
     }
 
     private func waitForExit(pid: pid_t, timeout: TimeInterval) async -> Bool {

@@ -80,7 +80,7 @@ public struct TimeMachineControl: Sendable {
             _ = try await executor.perform(.timeMachineDisable)
             return PauseOutcome(didDisable: true)
         } catch {
-            HKMLog.error("暂停 Time Machine 失败：\(error.localizedDescription)")
+            HKMLog.error(L("暂停 Time Machine 失败：{0}", error.localizedDescription))
             return PauseOutcome(
                 didDisable: false,
                 failure: FailedItem(title: "Time Machine", error: error, severity: .optional)
@@ -94,7 +94,7 @@ public struct TimeMachineControl: Sendable {
             _ = try await executor.perform(.timeMachineEnable)
             return nil
         } catch {
-            HKMLog.error("恢复 Time Machine 失败：\(error.localizedDescription)")
+            HKMLog.error(L("恢复 Time Machine 失败：{0}", error.localizedDescription))
             return FailedItem(title: "恢复 Time Machine", error: error, severity: .optional)
         }
     }

@@ -71,6 +71,13 @@ public final class AppState: ObservableObject {
     @Published public private(set) var unplugCountdown: Int?
     @Published public private(set) var failedItems: [FailedItem] = []
     @Published public private(set) var completedActions: [String] = []
+    /// 「关闭程序」那条在清单里的位置。
+    ///
+    /// 以前靠 `hasPrefix("关闭了") && hasSuffix("个程序")` 去找它——文案一进英文表，
+    /// 这个判断就永远匹配不上，于是同一件事在清单里出现两行。位置记下来最稳。
+    private var killSummaryIndex: Int?
+    /// 「关闭了蓝牙」是不是已经记过了。同样不能用文案当身份。
+    private var bluetoothMarkedDone = false
     @Published public private(set) var killedCount: Int = 0
     @Published public private(set) var session: SessionState?
     @Published public private(set) var report: Report?
@@ -234,20 +241,20 @@ public final class AppState: ObservableObject {
     public var awakeMinutesText: String {
         let minutes = max(0, awakeSeconds) / 60
         if minutes < 1 {
-            return "\(max(0, awakeSeconds)) 秒"
+            return L("{0} 秒", max(0, awakeSeconds))
         }
-        return "\(minutes) 分钟"
+        return L("{0} 分钟", minutes)
     }
 
     public var batteryDropText: String {
         guard let start = session?.batteryStart, let current = batteryNow else {
-            return "电量读取中"
+            return L("电量读取中")
         }
         let delta = start - current
         if delta <= 0 {
-            return "\(current)% · 没有下降"
+            return L("{0}% · 没有下降", current)
         }
-        return "\(current)% · 下降 \(delta)%"
+        return L("{0}% · 下降 {1}%", current, delta)
     }
 
     public var batteryFillRatio: Double {
@@ -289,7 +296,7 @@ public final class AppState: ObservableObject {
     }
 
     public var launchAtLoginText: String {
-        settings.launchAtLogin ? "已开机自启 · 无 Dock 图标" : "未开机自启 · 无 Dock 图标"
+        settings.launchAtLogin ? L("已开机自启 · 无 Dock 图标") : L("未开机自启 · 无 Dock 图标")
     }
 
     // MARK: - Bootstrap
@@ -504,7 +511,7 @@ public final class AppState: ObservableObject {
             failedItems = [
                 FailedItem(
                     title: "后台服务",
-                    detail: "装的是旧版本，需要更新一次才能安全地改设置",
+                    detail: L("装的是旧版本，需要更新一次才能安全地改设置"),
                     severity: .critical
                 )
             ]
@@ -530,7 +537,7 @@ public final class AppState: ObservableObject {
         errorMessage = nil
         showDetail = false
         failedItems = []
-        completedActions = []
+        resetCompletedActions()
         closingStep = nil
         killedCount = 0
         needsHelperInstall = false
@@ -661,6 +668,13 @@ public final class AppState: ObservableObject {
         closingStep = nil
     }
 
+    /// 清空完成清单，连同上面两个「这一条记过没有」的标记。
+    private func resetCompletedActions() {
+        completedActions = []
+        killSummaryIndex = nil
+        bluetoothMarkedDone = false
+    }
+
     /// 真正的外出流程。测试和 `--simulate-away` 直接 await 它。
     func performAwaySequence() async {
         isBusy = true
@@ -691,7 +705,7 @@ public final class AppState: ObservableObject {
 
         var failures: [FailedItem] = scanIssue.map { [$0] } ?? []
         // 进度清单从零开始：这个流程可能因为装了后台服务而重跑一遍。
-        completedActions = []
+        resetCompletedActions()
 
         // L1 first: without this nothing else matters.
         step("锁定睡眠设置")
@@ -701,9 +715,9 @@ public final class AppState: ObservableObject {
         )
         failures += powerFailures
         if powerFailures.isEmpty {
-            done("锁定了睡眠设置")
+            done(L("锁定了睡眠设置"))
         } else {
-            done("睡眠设置没写全")
+            done(L("睡眠设置没写全"))
         }
         narrate(describePowerStep(snapshot: snapshot.pmset, failures: powerFailures))
 
@@ -721,7 +735,7 @@ public final class AppState: ObservableObject {
             failures.append(failure)
             narrate("[3/8] 暂停 Time Machine… ✗ \(failure.detail)")
         } else if timeMachineOutcome.didDisable {
-            done("暂停了 Time Machine")
+            done(L("暂停了 Time Machine"))
             narrate("[3/8] 暂停 Time Machine… ✓")
         } else {
             narrate("[3/8] 暂停 Time Machine… 跳过（无备份目标）")
@@ -731,7 +745,7 @@ public final class AppState: ObservableObject {
         let sharingFailures = await deps.sharing.disableAll()
         failures += sharingFailures
         if !snapshot.sharing.isEmpty, sharingFailures.isEmpty {
-            done("关闭了共享服务")
+            done(L("关闭了共享服务"))
         }
         narrate(
             sharingFailures.isEmpty
@@ -741,14 +755,15 @@ public final class AppState: ObservableObject {
 
         step("关闭蓝牙")
         if snapshot.bluetoothPower == 0 {
-            done("蓝牙本来就关着")
+            done(L("蓝牙本来就关着"))
             narrate("[5/8] 关闭蓝牙… 跳过（本来就关着）")
         } else if let reason = await deps.bluetooth.setPower(false) {
             let detail = FailureText.humanize(reason, severity: .critical)
             failures.append(FailedItem(title: "蓝牙", detail: detail))
             narrate("[5/8] 关闭蓝牙… ✗ \(detail)")
         } else {
-            done("关闭了蓝牙")
+            done(L("关闭了蓝牙"))
+            bluetoothMarkedDone = true
             narrate("[5/8] 关闭蓝牙… ✓")
         }
 
@@ -760,16 +775,21 @@ public final class AppState: ObservableObject {
         if !killResult.failures.isEmpty {
             blockers = killResult.remaining
         }
-        done(killResult.count > 0 ? "关闭了 \(killResult.count) 个程序" : "没有程序在阻止睡眠")
+        if killResult.count > 0 {
+            killSummaryIndex = completedActions.count
+            done(L("关闭了 {0} 个程序", killResult.count))
+        } else {
+            done(L("没有程序在阻止睡眠"))
+        }
         narrate(killResult.narration)
 
         step("关闭网络唤醒")
         let wompFailed = failures.contains { $0.title == "睡眠设置 womp" }
         if snapshot.pmset["womp"] == 0 {
-            done("网络唤醒本来就关着")
+            done(L("网络唤醒本来就关着"))
             narrate("[7/8] 关闭网络唤醒… 跳过（本来就关着）")
         } else if !wompFailed {
-            done("关闭了网络唤醒")
+            done(L("关闭了网络唤醒"))
             narrate("[7/8] 关闭网络唤醒… ✓")
         } else {
             narrate("[7/8] 关闭网络唤醒… ✗")
@@ -781,7 +801,7 @@ public final class AppState: ObservableObject {
         try? deps.store.saveState(state)
 
         failedItems = failures
-        needsHelperInstall = !deps.helper.isInstalled && failures.contains { $0.detail.contains("后台服务") }
+        needsHelperInstall = !deps.helper.isInstalled && failures.contains { $0.title == "后台服务" }
 
         // 只有「能不能睡」的项才配打断用户；优化项失败照常出门。
         switch AwayDecision.decide(failures) {
@@ -880,7 +900,7 @@ public final class AppState: ObservableObject {
             for blocker in rescan.blockers where targets.contains(where: { $0.sameProcess(as: blocker) }) {
                 if remaining.contains(where: { $0.sameProcess(as: blocker) }) { continue }
                 failures.append(
-                    FailedItem(title: blocker.processName, detail: "退出后又自己起来了，还在阻止睡眠")
+                    FailedItem(title: blocker.processName, detail: L("退出后又自己起来了，还在阻止睡眠"))
                 )
                 remaining.append(blocker)
                 names.append("\(blocker.processName) 又起来了 ✗")
@@ -910,8 +930,9 @@ public final class AppState: ObservableObject {
         // 「我处理好了」，这里必须重新读一次真实状态，否则他会永远卡在这一页。
         if failedItems.contains(where: { $0.title == "蓝牙" }), await deps.bluetooth.powerState() == 0 {
             failedItems.removeAll { $0.title == "蓝牙" }
-            if !completedActions.contains("关闭了蓝牙") {
-                completedActions.append("关闭了蓝牙")
+            if !bluetoothMarkedDone {
+                completedActions.append(L("关闭了蓝牙"))
+                bluetoothMarkedDone = true
             }
             narrate("→ 蓝牙已由用户关闭")
         }
@@ -927,19 +948,18 @@ public final class AppState: ObservableObject {
                 needsHelperInstall = false
                 killedCount += 1
                 // 清单是按发生顺序排的，这一条就跟着追加；别去改别人的位置。
-                let summary = "关闭了 \(killedCount) 个程序"
-                if let index = completedActions.firstIndex(where: {
-                    $0.hasPrefix("关闭了") && $0.hasSuffix("个程序") || $0 == "没有程序在阻止睡眠"
-                }) {
+                let summary = L("关闭了 {0} 个程序", killedCount)
+                if let index = killSummaryIndex, completedActions.indices.contains(index) {
                     completedActions[index] = summary
                 } else {
+                    killSummaryIndex = completedActions.count
                     completedActions.append(summary)
                 }
                 enterReadyToUnplug()
             } else {
                 blockers = left
                 failedItems = failedItems.filter { !$0.isCritical } + left.map {
-                    FailedItem(title: $0.processName, detail: "无法自动退出，它还在阻止睡眠。请手动退出这个程序。")
+                    FailedItem(title: $0.processName, detail: L("无法自动退出，它还在阻止睡眠。请手动退出这个程序。"))
                 }
             }
         } catch {
@@ -1296,13 +1316,13 @@ public final class AppState: ObservableObject {
                 let holders = await deps.power.systemSleepBlockers()
                 blockedBy = holders
                 lastReason = holders.isEmpty
-                    ? "系统没有进入睡眠"
-                    : "\(holders.joined(separator: "、")) 占着系统睡眠"
+                    ? L("系统没有进入睡眠")
+                    : L("{0} 占着系统睡眠", holders.joined(separator: L("、")))
                 HKMLog.error("第 \(attempt) 次请求后系统仍然醒着：\(lastReason ?? "")")
             case .unknown:
                 // 读不到日志 ≠ 没睡。以前这里直接算失败，一晚上七条误报。
                 unverified = true
-                lastReason = "读不到电源日志，没法确认有没有睡着"
+                lastReason = L("读不到电源日志，没法确认有没有睡着")
                 HKMLog.error("第 \(attempt) 次请求后拿不到睡眠证据（读不到电源日志）")
             }
             if slept { break }
@@ -1338,7 +1358,7 @@ public final class AppState: ObservableObject {
         }
 
         // 没睡成：绝不切到「外出中」，也绝不说「系统已进入睡眠」。
-        let reason = lastReason ?? "系统拒绝了睡眠请求"
+        let reason = lastReason ?? L("系统拒绝了睡眠请求")
         sleepOutcome = unverified ? .unverified(reason: reason) : .failed(reason: reason)
         // 手动那次失败不算「等你重试」——用户随时可能拔线走人，那条自动路径
         // 不能被这个标记挡住（挡了的话他拔了线也睡不了，而且看不见界面）。
@@ -1351,7 +1371,7 @@ public final class AppState: ObservableObject {
         }
         if unverified {
             // 不知道就别下结论，也别推送。页面上照实说，按钮留着让用户自己决定。
-            errorMessage = "请求了睡眠，但读不到电源日志，没法确认它到底睡没睡"
+            errorMessage = L("请求了睡眠，但读不到电源日志，没法确认它到底睡没睡")
             narrate("→ 睡眠状态未知：\(reason)")
             return
         }
@@ -1361,12 +1381,12 @@ public final class AppState: ObservableObject {
             // 绝不能让界面去教一个此刻坐在电脑前的人「拔掉线之后它会自己睡」——
             // 他点的就是「不拔线也睡」。
             errorMessage = blockedBy.isEmpty
-                ? "刚睡下就被叫醒了。接着显示器的时候，系统很容易被一点动静弄醒"
-                : "\(blockedBy.joined(separator: "、")) 占着系统睡眠，先退出它"
+                ? L("刚睡下就被叫醒了。接着显示器的时候，系统很容易被一点动静弄醒")
+                : L("{0} 占着系统睡眠，先退出它", blockedBy.joined(separator: L("、")))
         } else {
             errorMessage = displayStillAttached
-                ? "显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡"
-                : "没能让电脑睡着：\(reason)"
+                ? L("显示器还插着，系统刚睡下就被叫醒了。拔掉线之后它会自己睡")
+                : L("没能让电脑睡着：{0}", reason)
         }
         narrate("→ 睡眠失败：\(reason)")
         // 一趟只提醒一次。以前每失败一轮弹一条，一晚上七条，把真正重要的信息淹了。
@@ -1634,7 +1654,7 @@ public final class AppState: ObservableObject {
         let failures = await restore(snapshot: state.snapshot)
         isBusy = false
         report = nil
-        completedActions = []
+        resetCompletedActions()
         failedItems = failures
         screen = .home
         iconState = .home
@@ -1648,7 +1668,7 @@ public final class AppState: ObservableObject {
             session = updated
             try? deps.store.saveState(updated)
             pendingRestore = true
-            errorMessage = "有 \(failures.count) 项没能恢复：\(failures.map(\.title).joined(separator: "、"))"
+            errorMessage = L("有 {0} 项没能恢复：{1}", failures.count, failures.map(\.title).joined(separator: L("、")))
             return
         }
         pendingRestore = false
@@ -1707,7 +1727,7 @@ public final class AppState: ObservableObject {
         var failedItems = state.snapshot.failedItems
         // 叫它睡它没睡，是这次流程最该说清楚的一件事。
         if state.sleepRequestedAt != nil, !result.sleptAtAll {
-            failedItems.append("睡眠：请求睡眠后系统没有进入睡眠")
+            failedItems.append(L("睡眠：请求睡眠后系统没有进入睡眠"))
         }
         failedItems += restoreFailures.map(\.summary)
 
@@ -1749,7 +1769,7 @@ public final class AppState: ObservableObject {
             session = updated
             try? deps.store.saveState(updated)
             pendingRestore = true
-            errorMessage = "有 \(restoreFailures.count) 项没能恢复：\(restoreFailures.map(\.title).joined(separator: "、"))"
+            errorMessage = L("有 {0} 项没能恢复：{1}", restoreFailures.count, restoreFailures.map(\.title).joined(separator: L("、")))
         }
 
         iconState = report.hasAnomaly ? .alert : .home
@@ -1788,7 +1808,7 @@ public final class AppState: ObservableObject {
             let snapshot = session?.snapshot ?? Snapshot.safeDefaults
             var failures = await restore(snapshot: snapshot)
             if session == nil {
-                failures.append(FailedItem(title: "状态文件", detail: "没找到这次外出的记录，已用安全默认值恢复"))
+                failures.append(FailedItem(title: "状态文件", detail: L("没找到这次外出的记录，已用安全默认值恢复")))
             }
 
             // 恢复失败也要能被看到：补进刚生成的那份报告里。同一条只记一次——
@@ -1811,12 +1831,12 @@ public final class AppState: ObservableObject {
                     try? deps.store.saveState(updated)
                 }
                 pendingRestore = true
-                completedActions = []
+                resetCompletedActions()
                 screen = .home
                 iconState = .home
                 showDetail = false
                 report = nil
-                errorMessage = "有 \(failures.count) 项没能恢复：\(failures.map(\.title).joined(separator: "、"))"
+                errorMessage = L("有 {0} 项没能恢复：{1}", failures.count, failures.map(\.title).joined(separator: L("、")))
                 return
             }
             settingsRestoredForReport = true
@@ -1825,7 +1845,7 @@ public final class AppState: ObservableObject {
             session = nil
         }
 
-        completedActions = []
+        resetCompletedActions()
         screen = .home
         iconState = .home
         showDetail = false

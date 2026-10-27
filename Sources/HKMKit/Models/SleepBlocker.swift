@@ -70,7 +70,7 @@ public struct SleepBlocker: Codable, Sendable, Equatable, Identifiable {
     /// 检测页改用 `explanation`，因为用户更想知道「它挡了什么、怎么关」。
     public var detailText: String {
         if isAudioAssertion {
-            return "正在放音频"
+            return L("正在放音频")
         }
         return DurationFormatter.compact(seconds: durationSeconds)
     }
@@ -87,12 +87,12 @@ public struct SleepBlocker: Codable, Sendable, Equatable, Identifiable {
             parts.append(bundleIdentifier)
         }
         if let proxyOwnerName, let proxyOwnerPID {
-            parts.append("断言由 \(proxyOwnerName)(\(proxyOwnerPID)) 代持")
+            parts.append(L("断言由 {0}({1}) 代持", proxyOwnerName, proxyOwnerPID))
         }
         if !assertionTypes.isEmpty {
             parts.append(assertionTypes.joined(separator: " / "))
         }
-        parts.append("已持续 \(DurationFormatter.humanized(seconds: durationSeconds))")
+        parts.append(L("已持续 {0}", DurationFormatter.humanized(seconds: durationSeconds)))
         return parts.joined(separator: " · ")
     }
 }
@@ -126,7 +126,7 @@ public struct WakeEvent: Codable, Sendable, Equatable, Identifiable {
     /// "14:32 · 屏幕亮了 2 分钟"
     public var headlineText: String {
         if durationSeconds > 0 {
-            return "\(timeText) · 屏幕亮了 \(durationText)"
+            return L("{0} · 屏幕亮了 {1}", timeText, durationText)
         }
         return "\(timeText) · \(reason)"
     }

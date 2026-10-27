@@ -10,11 +10,11 @@ public enum FailureText {
 
         if text.contains("full disk access") {
             return severity == .optional
-                ? "需要额外权限，这一项不影响睡眠"
-                : "需要额外权限才能完成"
+                ? L("需要额外权限，这一项不影响睡眠")
+                : L("需要额外权限才能完成")
         }
         if text.contains("no destinations configured") {
-            return "没有配置备份目标，已跳过"
+            return L("没有配置备份目标，已跳过")
         }
         if text.contains("operation not permitted")
             || text.contains("permission denied")
@@ -22,19 +22,20 @@ public enum FailureText {
             || text.contains("must be run as root")
             || text.contains("authorization") {
             return severity == .optional
-                ? "权限不足，这一项不影响睡眠"
-                : "权限不足"
+                ? L("权限不足，这一项不影响睡眠")
+                : L("权限不足")
         }
         if text.contains("not installed") || text.contains("后台服务") {
             return severity == .optional
-                ? "后台服务没有安装，这一项不影响睡眠"
-                : "后台服务没有安装"
+                ? L("后台服务没有安装，这一项不影响睡眠")
+                : L("后台服务没有安装")
         }
         // 已经是中文的（比如「蓝牙状态没有变化」）就原样保留，别降级成「操作失败」。
+        // 但英文环境要查一下表：这些中文串本身也是 key。
         if raw.unicodeScalars.contains(where: { $0.value >= 0x4E00 && $0.value <= 0x9FFF }) {
-            return raw
+            return L(raw)
         }
-        return severity == .optional ? "操作失败，不影响睡眠" : "操作失败"
+        return severity == .optional ? L("操作失败，不影响睡眠") : L("操作失败")
     }
 
     /// 历史报告里存的是升级前的 shell 原文，读出来时补一次人话化。
@@ -47,7 +48,7 @@ public enum FailureText {
         let title = String(summary[summary.startIndex..<separator])
         let detail = String(summary[summary.index(after: separator)...])
         guard isShellOutput(detail) else { return summary }
-        return "\(title)：\(humanize(detail, severity: .optional))"
+        return L("{0}：{1}", title, humanize(detail, severity: .optional))
     }
 
     /// 判断一段文字是不是还没翻译过的 shell 输出。

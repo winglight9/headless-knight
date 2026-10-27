@@ -78,12 +78,12 @@ public struct Report: Codable, Sendable, Equatable {
     /// First line of the report — a conclusion, never a status list.
     public var headline: String {
         if !sleptAtAll {
-            return "这次没睡成"
+            return L("这次没睡成")
         }
         if realWakeCount > 0 {
-            return "被唤醒 \(realWakeCount) 次"
+            return L("被唤醒 {0} 次", realWakeCount)
         }
-        return "这次很干净"
+        return L("这次很干净")
     }
 
     public var durationText: String { DurationFormatter.humanized(seconds: durationSeconds) }
@@ -94,20 +94,20 @@ public struct Report: Codable, Sendable, Equatable {
     /// 而用户回来常常已经插上电源了，这个数字跟他半夜关心的「一夜掉了多少」无关。
     public var batteryText: String {
         guard let delta = batteryDelta else {
-            return batteryEnd == nil ? "外出期间电量耗尽" : "电量未知"
+            return batteryEnd == nil ? L("外出期间电量耗尽") : L("电量未知")
         }
         if delta <= 0 {
-            return "没有掉电"
+            return L("没有掉电")
         }
-        return "掉电 \(delta)%"
+        return L("掉电 {0}%", delta)
     }
 
     /// Compact variant used under the headline on the anomaly screen.
     public var secondaryBatteryText: String {
         guard let delta = batteryDelta, delta > 0 else {
-            return "共 \(durationText)"
+            return L("共 {0}", durationText)
         }
-        return "共 \(durationText) · 掉电 \(delta)%"
+        return L("共 {0} · 掉电 {1}%", durationText, delta)
     }
 
     public var firstRealWakeText: String? {
@@ -122,29 +122,29 @@ public struct Report: Codable, Sendable, Equatable {
     /// 顺带把 `dock` 也删了：唤醒原因里不会出现这个词，留着只会误导。
     public var suggestion: Suggestion? {
         if !sleptAtAll {
-            return Suggestion(text: "这次没睡成，有程序一直在阻止睡眠", isActionable: true)
+            return Suggestion(text: L("这次没睡成，有程序一直在阻止睡眠"), isActionable: true)
         }
         guard let wake = realWakes.first else { return nil }
         let reason = wake.reason.lowercased()
 
         if reason.contains("keyboard") || reason.contains("hid") || reason.contains("trackpad") {
-            return Suggestion(text: "\(wake.timeText) 键盘被按下", isActionable: false)
+            return Suggestion(text: L("{0} 键盘被按下", wake.timeText), isActionable: false)
         }
         if reason.contains("useractivity") {
-            return Suggestion(text: "\(wake.timeText) 有人动了机器", isActionable: false)
+            return Suggestion(text: L("{0} 有人动了机器", wake.timeText), isActionable: false)
         }
         if reason.contains("network") || reason.contains("en0") || reason.contains("magicwake") {
-            return Suggestion(text: "已关闭网络唤醒，仍被局域网设备叫醒", isActionable: true)
+            return Suggestion(text: L("已关闭网络唤醒，仍被局域网设备叫醒"), isActionable: true)
         }
         if reason.contains("usb-c_plug") || reason.contains("usb") {
-            return Suggestion(text: "\(wake.timeText) 有人插了线", isActionable: false)
+            return Suggestion(text: L("{0} 有人插了线", wake.timeText), isActionable: false)
         }
         if reason.contains("maintenance") || reason.contains("rtc") || reason.contains("sleepservice") {
-            return Suggestion(text: "系统维护唤醒，可在设置里彻底关闭", isActionable: true)
+            return Suggestion(text: L("系统维护唤醒，可在设置里彻底关闭"), isActionable: true)
         }
         if reason.contains("notification") {
-            return Suggestion(text: "\(wake.timeText) 来了通知，屏幕亮了一下", isActionable: false)
+            return Suggestion(text: L("{0} 来了通知，屏幕亮了一下", wake.timeText), isActionable: false)
         }
-        return Suggestion(text: "\(wake.timeText) 被 \(wake.reason) 唤醒", isActionable: false)
+        return Suggestion(text: L("{0} 被 {1} 唤醒", wake.timeText, wake.reason), isActionable: false)
     }
 }

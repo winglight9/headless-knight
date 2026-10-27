@@ -13,13 +13,17 @@ struct DetectingView: View {
     @EnvironmentObject private var state: AppState
 
     private var title: String {
-        state.blockers.isEmpty
-            ? "没有程序在阻止睡眠"
-            : "\(state.blockers.count) 个程序在挡睡眠"
+        if state.blockers.isEmpty {
+            return L("没有程序在阻止睡眠")
+        }
+        // 英文的单复数没法靠一张表解决，所以两句话分开写。
+        return state.blockers.count == 1
+            ? L("1 个程序在挡睡眠")
+            : L("{0} 个程序在挡睡眠", state.blockers.count)
     }
 
     var body: some View {
-        PopupScaffold(status: .preparing, title: "无头骑士大师") {
+        PopupScaffold(status: .preparing, title: L("无头骑士大师")) {
             VStack(spacing: 0) {
                 VStack(spacing: 5) {
                     Text(title)
@@ -49,7 +53,11 @@ struct DetectingView: View {
                     .padding(.top, 15)
 
                     if state.blockers.count > 4 {
-                        NoteText(text: "另有 \(state.blockers.count - 4) 个会一起关掉", alignment: .center)
+                        let hidden = state.blockers.count - 4
+                        NoteText(
+                            text: hidden == 1 ? L("1 个会一起关掉") : L("另有 {0} 个会一起关掉", hidden),
+                            alignment: .center
+                        )
                             .padding(.top, 8)
                     }
                 }
@@ -57,7 +65,7 @@ struct DetectingView: View {
                 chooseSection
 
                 Button(action: { state.cancelDetecting() }) {
-                    Text("取消，先不出门")
+                    Text(L("取消，先不出门"))
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.tertiaryInk)
                 }
@@ -71,26 +79,30 @@ struct DetectingView: View {
     private var sideNote: String? {
         var parts: [String] = []
         if state.displayOnlyCount > 0 {
-            parts.append("另有 \(state.displayOnlyCount) 个只让屏幕不灭，不会动它们")
+            parts.append(state.displayOnlyCount == 1
+                ? L("1 个只让屏幕不灭，不会动它")
+                : L("另有 {0} 个只让屏幕不灭，不会动它们", state.displayOnlyCount))
         }
         if state.systemBlockerCount > 0 {
-            parts.append("\(state.systemBlockerCount) 个系统进程会自己退出")
+            parts.append(state.systemBlockerCount == 1
+                ? L("1 个系统进程会自己退出")
+                : L("{0} 个系统进程会自己退出", state.systemBlockerCount))
         }
-        return parts.isEmpty ? nil : parts.joined(separator: "；")
+        return parts.isEmpty ? nil : parts.joined(separator: L("；"))
     }
 
     private var chooseSection: some View {
         VStack(spacing: 9) {
-            Text("手动关掉它们，或者点下面一键关闭")
+            Text(L("手动关掉它们，或者点下面一键关闭"))
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
-            PopupButton(title: "一键全部关闭", isEnabled: !state.isBusy) {
+            PopupButton(title: L("一键全部关闭"), isEnabled: !state.isBusy) {
                 state.closeImmediately()
             }
-            Text("会直接退出这些程序，没保存的会丢")
+            Text(L("会直接退出这些程序，没保存的会丢"))
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.secondaryInk)
                 .multilineTextAlignment(.center)
@@ -149,11 +161,11 @@ struct ScanningView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        PopupScaffold(status: .working, title: "无头骑士大师") {
+        PopupScaffold(status: .working, title: L("无头骑士大师")) {
             VStack(spacing: 11) {
                 ProgressView()
                     .controlSize(.small)
-                NoteText(text: "正在检查谁在挡着睡眠…", alignment: .center)
+                NoteText(text: L("正在检查谁在挡着睡眠…"), alignment: .center)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 40)
