@@ -375,6 +375,8 @@ extension AppDependencies {
             sharing: sim,
             timeMachine: sim,
             displays: sim,
+            displayCutter: sim,
+            idleSleep: sim,
             store: sim,
             notifier: sim,
             loginItem: sim,

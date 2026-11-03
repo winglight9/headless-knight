@@ -1,0 +1,93 @@
+import Foundation
+import IOKit.pwr_mgt
+
+/// 一个「别让机器空闲睡眠」的电源断言。
+///
+/// 用 `kIOPMAssertionTypePreventUserIdleSystemSleep`，不是 `PreventSystemSleep`。
+/// 两者的区别很要命：
+///   · 前者只挡「空闲自动睡」，`pmset sleepnow` 照样能睡——这正是本产品要的，
+///     平时机器醒着当服务器，出门时我们主动叫它睡，不冲突；
+///   · 后者连强制睡眠都挡，一旦勾上，外出模式会把机器留在醒着的状态里。
+///
+/// 断言跟着进程走：App 被杀掉时内核自己回收，不存在「软件关了机器还醒着」。
+public final class SleepAssertion: @unchecked Sendable {
+    /// 为什么没拿到。设置页要能说清楚，而不是显示一个假的「已生效」。
+    public enum Failure: Error, Equatable, Sendable {
+        case notPermitted
+        case unknown(IOReturn)
+
+        public var message: String {
+            switch self {
+            case .notPermitted:
+                return L("系统不允许这个程序保持清醒")
+            case let .unknown(code):
+                return L("系统拒绝了请求（代码 {0}）", Int(code))
+            }
+        }
+    }
+
+    private let lock = NSLock()
+    private var assertionID: IOPMAssertionID = 0
+    private let reason: String
+
+    public init(reason: String = "无头骑士大师：机器正被当作服务器使用") {
+        self.reason = reason
+    }
+
+    deinit {
+        release()
+    }
+
+    /// 现在拿着断言吗。
+    public var isHolding: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return assertionID != 0
+    }
+
+    /// 拿到断言。重复调用是幂等的。
+    @discardableResult
+    public func hold() -> Result<Void, Failure> {
+        lock.lock()
+        defer { lock.unlock() }
+        guard assertionID == 0 else { return .success(()) }
+
+        var id: IOPMAssertionID = 0
+        let result = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason as CFString,
+            &id
+        )
+        guard result == kIOReturnSuccess else {
+            HKMLog.error("防空闲睡眠断言没拿到：\(result)")
+            return .failure(result == kIOReturnNotPermitted ? .notPermitted : .unknown(result))
+        }
+        assertionID = id
+        HKMLog.info("拿到防空闲睡眠断言 #\(id)")
+        return .success(())
+    }
+
+    /// 放掉。没拿着时什么都不做。
+    public func release() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard assertionID != 0 else { return }
+        IOPMAssertionRelease(assertionID)
+        HKMLog.info("放掉防空闲睡眠断言 #\(assertionID)")
+        assertionID = 0
+    }
+
+    /// 按设置决定拿着还是放掉。返回最终状态：`true` = 现在拿着。
+    @discardableResult
+    public func apply(enabled: Bool) -> Bool {
+        if enabled {
+            switch hold() {
+            case .success: return true
+            case .failure: return false
+            }
+        }
+        release()
+        return false
+    }
+}

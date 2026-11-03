@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import HKMKit
 
 /// 命令行入口。两条纯终端路径必须在 `NSApplication` 起来之前处理完：
 /// 它们要能在一个没有窗口服务的 SSH 会话里跑，也不该在菜单栏留下图标。
@@ -54,6 +55,52 @@ if arguments.contains("--notify-test") {
 
 if arguments.contains("--simulate-away") || arguments.contains("--list-scenarios") {
     exit(await runSimulateAway(arguments: arguments))
+}
+
+/// 不依赖界面的「接回内建屏」。
+///
+/// 存在的理由很直白：断内建屏之后如果一块屏都没有了，菜单栏和面板都不在视野里，
+/// ⌘H 也可能被别的软件占着。这条路只要 App 还在磁盘上就能走：
+///
+///     /Applications/Knight.app/Contents/MacOS/Knight --restore-builtin
+///
+/// 它不走 `AppState`，也不看设置，因为它的使用场景就是「设置可能已经不对了」。
+@MainActor
+func runRestoreBuiltin() async -> Int32 {
+    let controller = DisplayController()
+    guard controller.isAvailable else {
+        print("这个系统上拿不到断屏接口，没法处理内建屏")
+        return 1
+    }
+    guard let id = controller.builtinDisplayID() else {
+        print("找不到内建屏：这台机器可能真的没有")
+        return 1
+    }
+    print("内建屏 #\(id)，现在\(CGDisplayIsActive(id) == 1 ? "亮着" : "断开着")")
+    switch await controller.reconnect() {
+    case let .reconnected(id):
+        print("已接回内建屏 #\(id)")
+        return 0
+    case let .unchanged(id):
+        print("内建屏 #\(id) 本来就亮着，不用动")
+        return 0
+    case .builtinNotFound:
+        print("找不到内建屏，没法接回")
+        return 1
+    case .apiUnavailable:
+        print("这个系统上拿不到断屏接口")
+        return 1
+    case let .failed(reason):
+        print("接回失败：\(reason)")
+        return 1
+    case .disconnected:
+        print("状态异常：请求接回，结果却是断开")
+        return 1
+    }
+}
+
+if arguments.contains("--restore-builtin") {
+    exit(await runRestoreBuiltin())
 }
 
 @MainActor

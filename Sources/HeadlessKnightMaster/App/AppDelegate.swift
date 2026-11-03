@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState = state
         statusController = StatusItemController(state: state)
         state.bootstrap()
+        // 断内建屏放这里、不放 bootstrap：它会让系统重排显示拓扑，必须等
+        // bootstrap 把「现在有几块屏」读完之后再动，否则读到的是半个中间态。
+        state.startupSystemTasks()
 
         // 只在真正的 GUI 里问，而且只在「还没问过」时问一次。
         //

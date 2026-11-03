@@ -82,6 +82,29 @@ protocol DisplayWatching {
     func displaySnapshots() -> [DisplayWatcher.DisplaySnapshot]
 }
 
+/// 把内建屏从显示拓扑里摘掉 / 装回来。
+///
+/// 和 `DisplayWatching` 分开：那边是只读观察，这边是动系统。分开之后，测试里
+/// 可以只替换一件，不必为了测「断屏失败」而伪造整个显示观测。
+@MainActor
+protocol DisplayCutting {
+    /// 这个系统上拿不拿得到私有接口。拿不到时设置页要把开关显示成灰的。
+    var isAvailable: Bool { get }
+    var isBuiltinActive: Bool { get }
+    func builtinDisplayID() -> CGDirectDisplayID?
+    func disconnect() async -> DisplayController.Outcome
+    func reconnect() async -> DisplayController.Outcome
+}
+
+/// 「防止空闲睡眠」的电源断言。
+@MainActor
+protocol IdleSleepPreventing {
+    /// 现在真的拿着断言吗。这是唯一可信的状态——设置里勾着不等于拿到了。
+    var isHolding: Bool { get }
+    /// 按设置持有或释放，返回最终是否拿着。
+    func apply(enabled: Bool) -> Bool
+}
+
 @MainActor
 protocol StateStoring {
     func loadState() -> SessionState?
@@ -257,6 +280,33 @@ struct SystemHelperManager: HelperManaging {
 
 // MARK: - 依赖容器
 
+/// `DisplayController` 在 App 侧的适配层。
+///
+/// HKMKit 里那个类是 nonisolated 的（它会被命令行入口直接用），而这里所有协议
+/// 都挂 `@MainActor`。包一层比让隔离属性传染进 Core 干净。
+@MainActor
+final class SystemDisplayCutter: DisplayCutting {
+    private let controller = DisplayController()
+
+    var isAvailable: Bool { controller.isAvailable }
+    var isBuiltinActive: Bool { controller.isBuiltinActive }
+
+    func builtinDisplayID() -> CGDirectDisplayID? { controller.builtinDisplayID() }
+    func disconnect() async -> DisplayController.Outcome { await controller.disconnect() }
+    func reconnect() async -> DisplayController.Outcome { await controller.reconnect() }
+}
+
+@MainActor
+final class SystemIdleSleepGuard: IdleSleepPreventing {
+    private let assertion = SleepAssertion()
+
+    var isHolding: Bool { assertion.isHolding }
+
+    func apply(enabled: Bool) -> Bool {
+        assertion.apply(enabled: enabled)
+    }
+}
+
 struct AppDependencies {
     var scanner: any ProcessScanning
     var killer: any ProcessKilling
@@ -266,6 +316,8 @@ struct AppDependencies {
     var sharing: any SharingControlling
     var timeMachine: any TimeMachineControlling
     var displays: any DisplayWatching
+    var displayCutter: any DisplayCutting
+    var idleSleep: any IdleSleepPreventing
     var store: any StateStoring
     var notifier: any Notifying
     var loginItem: any LoginItemManaging
@@ -289,6 +341,8 @@ struct AppDependencies {
             sharing: SharingControl(executor: executor),
             timeMachine: TimeMachineControl(executor: executor),
             displays: DisplayWatcher(),
+            displayCutter: SystemDisplayCutter(),
+            idleSleep: SystemIdleSleepGuard(),
             store: SessionStore(),
             notifier: Notifier(),
             loginItem: LaunchAtLogin(),

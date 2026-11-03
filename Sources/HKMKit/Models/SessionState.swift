@@ -80,24 +80,35 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// 程序没法从参数上分辨真假，只能问用户。
     ///
     /// 勾上之后，「内建屏在线」不再被当成「人在电脑前」，拔线就走。
+    ///
+    /// v1.9 起它不再只是一句声明：勾上会真的用私有接口把内建屏摘掉，取消勾选
+    /// 再接回来。勾选状态是持久化的意图，实际断没断是另一回事（要看回读结果）。
     public var noBuiltinDisplay: Bool
+    /// 防止空闲睡眠：勾上后机器不会「因为没人动」自己睡。
+    ///
+    /// **默认开。** 这台的用法是当服务器，平时最怕的就是空闲自己睡过去。
+    /// 它挡的是空闲睡眠，不挡 `pmset sleepnow`——出门时我们主动叫它睡，
+    /// 所以不用让用户先去关这个开关。
+    public var preventIdleSleep: Bool
 
     public init(
         onboardingDone: Bool = false,
         launchAtLogin: Bool = false,
         sleepDelaySeconds: Int = 5,
         strongMode: Bool = true,
-        noBuiltinDisplay: Bool = false
+        noBuiltinDisplay: Bool = false,
+        preventIdleSleep: Bool = true
     ) {
         self.onboardingDone = onboardingDone
         self.launchAtLogin = launchAtLogin
         self.sleepDelaySeconds = sleepDelaySeconds
         self.strongMode = strongMode
         self.noBuiltinDisplay = noBuiltinDisplay
+        self.preventIdleSleep = preventIdleSleep
     }
 
     private enum CodingKeys: String, CodingKey {
-        case onboardingDone, launchAtLogin, sleepDelaySeconds, strongMode, noBuiltinDisplay
+        case onboardingDone, launchAtLogin, sleepDelaySeconds, strongMode, noBuiltinDisplay, preventIdleSleep
     }
 
     /// 老版本写下的 settings.json 里没有 `strongMode`。合成解码遇到缺字段会直接
@@ -110,6 +121,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         sleepDelaySeconds = try container.decodeIfPresent(Int.self, forKey: .sleepDelaySeconds) ?? 5
         strongMode = try container.decodeIfPresent(Bool.self, forKey: .strongMode) ?? true
         noBuiltinDisplay = try container.decodeIfPresent(Bool.self, forKey: .noBuiltinDisplay) ?? false
+        // 老设置里没有这一项。新装的默认开，老用户也一样——这条不是替用户改主意，
+        // 是「以前根本没有这个能力」，默认值只能按产品的常态给。
+        preventIdleSleep = try container.decodeIfPresent(Bool.self, forKey: .preventIdleSleep) ?? true
     }
 
     public static let `default` = AppSettings()

@@ -117,6 +117,34 @@ public final class AppState: ObservableObject {
     @Published public private(set) var awakeSeconds: Int = 0
     /// 设置页里如实显示的通知状态。
     @Published public private(set) var notificationStatus: String = "…"
+    /// 「防止空闲睡眠」此刻是不是真的拿在手里。
+    ///
+    /// 设置里勾着不等于拿到了：断言可能被系统拒绝。设置页要照这个说话。
+    @Published public private(set) var idleSleepHeld = false
+    /// 内建屏此刻的真实状态。同样，开关勾着不等于屏断了。
+    @Published public private(set) var builtinCutState: BuiltinCutState = .unknown
+
+    /// 内建屏到底断没断。开关是「我想要」，这个是「现在是什么」。
+    public enum BuiltinCutState: Equatable, Sendable {
+        case unknown
+        case disconnected
+        case connected
+        /// 这台系统上私有接口不可用，做不到。
+        case unsupported
+        case failed(String)
+
+        /// 设置页那一行的小字。说人话，不解释实现。
+        public var summary: String {
+            switch self {
+            case .unknown: return L("正在检查")
+            case .disconnected: return L("内建屏已断开")
+            case .connected: return L("内建屏接着")
+            case .unsupported: return L("这个系统版本断不了")
+            case let .failed(reason): return L("没断开：{0}", reason)
+            }
+        }
+    }
+
     public var errorMessage: String?
 
     // MARK: - Dependencies
@@ -138,6 +166,8 @@ public final class AppState: ObservableObject {
     private var flowTask: Task<Void, Never>?
     private var unplugPollTask: Task<Void, Never>?
     private var sleepRetryTask: Task<Void, Never>?
+    /// 「内建屏又被系统装回来了，再摘一次」。同一时刻只跑一个。
+    private var maintainCutTask: Task<Void, Never>?
     /// 从哪一页点开设置的。关掉设置要回到那一页，而不是按 phase 猜。
     private var screenBeforeSettings: Screen?
     /// 进「可以拔线了」那一刻还插着的显示器 ID。
@@ -341,6 +371,15 @@ public final class AppState: ObservableObject {
         batteryNow = deps.battery.percentage()
         now = deps.clock.now
         refreshSleepDisabled()
+        // 「防止空闲睡眠」默认开：开机第一秒就得按设置拿上，否则从登录到用户点开
+        // 设置之间，机器会按系统默认的空闲时间去睡。
+        applyIdleSleepSetting()
+        // 显示器观察常驻，不只在出门流程里。
+        //
+        // 以前只有「外出中」才挂着回调，因为只有拔线检测要用它。现在首页也需要：
+        // 勾着「没有内建屏」的机器，唤醒之后系统会把内屏装回来，得有人发现并
+        // 再摘一次。首页多挂一个回调的代价只是几次日志。
+        observeDisplaysForReturn()
 
         if !settings.onboardingDone {
             screen = .onboarding(1)
@@ -377,6 +416,16 @@ public final class AppState: ObservableObject {
             screen = .home
             iconState = .home
         }
+    }
+
+    /// 启动时该做、但会动系统的那几件事。
+    ///
+    /// **不能塞进 `bootstrap()`。** bootstrap 是同步的，断屏是异步的；在那里起一个
+    /// Task，它可能在「开始外出」刚记完显示器基线之后才执行，把基线里的内屏删掉，
+    /// 于是被判成「已经拔线」，机器提前睡。测试里这个竞态必现，真机只是概率低。
+    public func startupSystemTasks() {
+        guard settings.noBuiltinDisplay else { return }
+        Task { await applyBuiltinCut(true) }
     }
 
     // MARK: - Onboarding
@@ -443,7 +492,26 @@ public final class AppState: ObservableObject {
         screenBeforeSettings = screen
         screen = .settings
         refreshNotificationStatus()
+        refreshSystemChips()
     }
+
+    /// 打开设置页时把「系统说了算」的两件事重新读一遍。
+    ///
+    /// 这两行的状态不能靠记忆：断言可能被系统收走，内建屏可能被唤醒时的重排
+    /// 装回来。设置页显示的必须是此刻的事实，否则又变成软件在替系统说话。
+    private func refreshSystemChips() {
+        idleSleepHeld = deps.idleSleep.isHolding
+        if deps.displayCutter.isAvailable {
+            builtinCutState = deps.displayCutter.isBuiltinActive ? .connected : .disconnected
+            // 勾着但屏又回来了：交给维持逻辑去重断，界面下一拍就会变。
+            maintainBuiltinCutIfNeeded()
+        } else {
+            builtinCutState = .unsupported
+        }
+    }
+
+    /// 这个系统上能不能摘内建屏。不能用时设置页要把开关显示成灰的。
+    public var isBuiltinCutAvailable: Bool { deps.displayCutter.isAvailable }
 
     /// 通知到底能不能弹。设置页每次打开都重新问一遍系统，不缓存。
     public func refreshNotificationStatus() {
@@ -726,6 +794,14 @@ public final class AppState: ObservableObject {
         )
 
         var failures: [FailedItem] = scanIssue.map { [$0] } ?? []
+        // 马上要睡了，先把「防止空闲睡眠」放开。
+        //
+        // 为什么在这里、不是点「开始外出」那一刻：检测页上他还要花时间关程序，
+        // 那段时间机器不该先睡过去。为什么干脆放开而不是留着：它只挡空闲睡眠、
+        // 不挡 `pmset sleepnow`，所以放开不影响这次睡眠；而万一后面流程挂了，
+        // 睡前的 `sleep 1` 还能让机器自己睡回去——留着就等于把这条退路堵死。
+        _ = deps.idleSleep.apply(enabled: false)
+        idleSleepHeld = false
         // 进度清单从零开始：这个流程可能因为装了后台服务而重跑一遍。
         resetCompletedActions()
 
@@ -1168,6 +1244,8 @@ public final class AppState: ObservableObject {
 
     private func handleDisplayChange(_ count: Int) {
         displayCount = count
+        // 唤醒、插拔之后系统会把内建屏装回来，勾着「没有内建屏」就得再摘一次。
+        maintainBuiltinCutIfNeeded()
         // 显示器回来的这一瞬间，顺手把空基线补上——否则拔线那一刻没判据。
         adoptBaselineIfEmpty()
         let detached = isDisplayDetached()
@@ -1522,17 +1600,117 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// 「这台机器没有内建屏」。勾上之后「内建屏在线」不再被当成「人在电脑前」。
+    /// 「防止空闲睡眠」。改完立刻生效，并把真实结果记下来。
     ///
-    /// 拆了屏的机器，macOS 照样报一块 EDID 完全正常的内建屏，程序分辨不出真假，
-    /// 只能问用户。不勾的话，拔线那一刻只要那个假信号亮着，自动睡就不会触发。
+    /// 它挡的是「没人动就自己睡」，不挡 `pmset sleepnow`。所以出门流程照睡，
+    /// 不需要用户先去关这个开关；进入外出的那一刻我们会自己放开（见
+    /// `performAwaySequence`），回来再按设置接上。
+    public func togglePreventIdleSleep() {
+        settings.preventIdleSleep.toggle()
+        try? deps.store.saveSettings(settings)
+        applyIdleSleepSetting()
+        HKMLog.info("防止空闲睡眠：\(settings.preventIdleSleep ? "开" : "关")，实际\(idleSleepHeld ? "拿到了" : "没拿到")")
+    }
+
+    private func applyIdleSleepSetting() {
+        idleSleepHeld = deps.idleSleep.apply(enabled: settings.preventIdleSleep)
+        if settings.preventIdleSleep, !idleSleepHeld {
+            HKMLog.error("设置要防止空闲睡眠，但系统没给断言")
+        }
+    }
+
+    /// 「没有内建屏」。勾上就真的把内建屏从显示拓扑里摘掉，取消就装回来。
+    ///
+    /// 以前它只是一句声明：拆掉屏的机器上 macOS 照样报一块 EDID 完全正常的内建屏
+    /// （真机抓到 1512x982 / v1552 / m41038），程序分辨不出真假，只能问用户，
+    /// 然后绕过这个信号。现在改成照做——他说没有，那就真拿掉，让系统也别再报。
+    /// 这样「内建屏在线」这个信号本身就变真了，不用再到处打补丁。
     public func toggleNoBuiltinDisplay() {
+        guard !isBusy else { return }
         settings.noBuiltinDisplay.toggle()
         try? deps.store.saveSettings(settings)
         HKMLog.info("没有内建屏：\(settings.noBuiltinDisplay ? "开" : "关")")
-        // 开关一改，「人在不在」的判断就变了，立刻按当前显示器状态重算一遍——
-        // 否则要等下一次显示器变化，而他可能已经拔完线走了。
-        handleDisplayChange(deps.displays.activeDisplayCount())
+        let target = settings.noBuiltinDisplay
+        isBusy = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.applyBuiltinCut(target)
+            self.isBusy = false
+            // 开关一改，「人在不在」的判断就变了，立刻按当前显示器状态重算一遍——
+            // 否则要等下一次显示器变化，而他可能已经拔完线走了。
+            self.handleDisplayChange(self.deps.displays.activeDisplayCount())
+        }
+    }
+
+    /// ⌘H 走的路：按当前状态反过来切。
+    ///
+    /// 它和设置页那个开关是**同一个状态**，不是两套：按一下接回内屏 = 取消勾选，
+    /// 再按一下断开 = 重新勾上。否则会出现「设置说没内屏、屏却亮着」，而维持
+    /// 断开的逻辑下一秒又把它断回去，按了跟没按一样。
+    public func toggleBuiltinByHotKey() {
+        // 出门流程里不响应：那时候系统正在重排显示器，插一脚会让拔线判断和
+        // 睡眠验证都乱掉。
+        switch screen {
+        case .detecting, .closing, .readyToUnplug, .away, .blocked, .auditing:
+            HKMLog.info("⌘H：正在出门流程里（\(screen)），不切换内建屏")
+            return
+        default:
+            break
+        }
+        HKMLog.info("⌘H：切换内建屏")
+        toggleNoBuiltinDisplay()
+    }
+
+    /// 按目标状态断/接内建屏，把**真实结果**写进 `builtinCutState`。
+    ///
+    /// 这里不做「失败了自动回滚」之类的小聪明：用户要的是「没有内建屏」，
+    /// 做不到就得让他看见「没断开」，而不是假装做完了。
+    func applyBuiltinCut(_ cut: Bool) async {
+        guard deps.displayCutter.isAvailable else {
+            builtinCutState = .unsupported
+            HKMLog.error("这个系统上拿不到断屏接口，内建屏摘不掉")
+            return
+        }
+        let outcome = cut
+            ? await deps.displayCutter.disconnect()
+            : await deps.displayCutter.reconnect()
+        switch outcome {
+        case .disconnected, .reconnected, .unchanged:
+            // `.unchanged` 是「已经是这个状态了」，不是失败。
+            builtinCutState = cut ? .disconnected : .connected
+        case .builtinNotFound:
+            builtinCutState = .failed(L("找不到内建屏"))
+        case .apiUnavailable:
+            builtinCutState = .unsupported
+        case let .failed(reason):
+            builtinCutState = .failed(reason)
+        }
+        HKMLog.info("内建屏\(cut ? "断开" : "接回") → \(builtinCutState.summary)")
+    }
+
+    /// 内建屏又回来了（唤醒、插拔、系统自己重排）就再摘一次。
+    ///
+    /// 没有这一步，「断开」只能管到下一次睡眠——醒过来系统就把屏装回来了，
+    /// 开关看着是勾着的，实际早就失效了。
+    private func maintainBuiltinCutIfNeeded() {
+        guard settings.noBuiltinDisplay,
+              deps.displayCutter.isAvailable,
+              deps.displayCutter.isBuiltinActive,
+              maintainCutTask == nil else { return }
+        maintainCutTask = Task { [weak self] in
+            // 系统在拓扑变化的过程中不接受新的显示配置，等它静下来。
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            defer { self.maintainCutTask = nil }
+            guard self.settings.noBuiltinDisplay, self.deps.displayCutter.isBuiltinActive else { return }
+            let outcome = await self.deps.displayCutter.disconnect()
+            HKMLog.info("维持断开内建屏：\(outcome)")
+            if case let .failed(reason) = outcome {
+                self.builtinCutState = .failed(reason)
+            } else {
+                self.builtinCutState = .disconnected
+            }
+        }
     }
 
     /// 盯着「机器是不是一直醒着」。
@@ -1717,6 +1895,9 @@ public final class AppState: ObservableObject {
     func restoreAndReturnHome() async {
         stopStrongModeWatch()
         clearPowerLogCache()
+        // 回来了，把「防止空闲睡眠」按设置接上。放在最前面：不管是正常结束、
+        // 中途取消，还是走了「安全默认值」那条兜底，都要接回来。
+        applyIdleSleepSetting()
         guard let state = session else {
             // 内存里没有这次外出的记录（状态文件损坏或被删）。快照丢了，只能按
             // 安全方向还原一次：蓝牙打开、睡眠解锁，别把机器留在睡不着的状态。

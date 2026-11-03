@@ -107,4 +107,13 @@ final class GlobalHotKey {
     static let endAwayKeyCode = UInt32(kVK_ANSI_E)
     static let endAwayModifiers = UInt32(controlKey | optionKey | cmdKey)
     static let endAwayLabel = "⌃⌥⌘E"
+
+    /// 内建屏开关：⌘H。按一下接回，再按一下断开。
+    ///
+    /// 选它是用户定的，代价也说清楚了：这个键平时是「隐藏窗口」，被我们占了之后
+    /// **所有 App 的 ⌘H 都会失效**。换来的是「屏黑了也有一条不依赖界面的活路」——
+    /// 断开内建屏之后，菜单栏、面板都可能在别处，只有键盘还在。
+    static let builtinKeyCode = UInt32(kVK_ANSI_H)
+    static let builtinModifiers = UInt32(cmdKey)
+    static let builtinLabel = "⌘H"
 }

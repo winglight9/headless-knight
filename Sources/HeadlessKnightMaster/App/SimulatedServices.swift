@@ -9,8 +9,8 @@ import HKMKit
 @MainActor
 final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling,
     BluetoothControlling, BatteryReading, SharingControlling, TimeMachineControlling,
-    DisplayWatching, StateStoring, Notifying, LoginItemManaging, PowerLogReading,
-    HelperManaging, RemoteSessionChecking, SystemClock {
+    DisplayWatching, DisplayCutting, IdleSleepPreventing, StateStoring, Notifying,
+    LoginItemManaging, PowerLogReading, HelperManaging, RemoteSessionChecking, SystemClock {
 
     // MARK: - 可调参数
 
@@ -58,6 +58,16 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     var builtinIDs: Set<CGDirectDisplayID> = []
     /// 内建屏亮着（笔记本盖子开着）。默认关着，就是「无头」那台机器。
     var builtinIsOnline = false
+    /// 这台机器上断屏接口能不能用（模拟老系统 / 私有符号没了）。
+    var displayCutAvailable = true
+    /// 注入一次断开失败，用来验证「设置页不许假装成功」。
+    var displayCutFailure: String?
+    private(set) var displayCutCalls = 0
+    /// 系统给不给这个电源断言。false 用来复现「勾了但没拿到」。
+    var idleSleepGranted = true
+    private(set) var idleSleepHolding = false
+    /// 每一次请求的值（true = 要拿着）。用来验证「出门时放开、回来恢复」。
+    private(set) var idleSleepRequests: [Bool] = []
 
     var powerLog = ""
     /// `readPowerLog()` 被调了几次。用来验证「预读过就不再读第二遍」。
@@ -430,6 +440,60 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
                 height: 1440
             )
         }
+    }
+
+    // MARK: - DisplayCutting
+
+    var isAvailable: Bool { displayCutAvailable }
+    var isBuiltinActive: Bool { builtinIsOnline }
+
+    func builtinDisplayID() -> CGDirectDisplayID? {
+        // 模拟机沿用 Apple Silicon 的惯例：内建屏是 1 号。
+        displayCutAvailable ? 1 : nil
+    }
+
+    func disconnect() async -> DisplayController.Outcome {
+        displayCutCalls += 1
+        if let failure = displayCutFailure {
+            record("display cut failed: \(failure)")
+            return .failed(reason: failure)
+        }
+        guard builtinIsOnline else { return .unchanged(id: 1) }
+        builtinIsOnline = false
+        // 真机上断开之后内建屏会从 online 列表里消失，这里跟着一起改，
+        // 否则「拔线基线只记外接真屏」那些判断就测不出真机行为。
+        onlineIDs.removeAll { $0 == 1 }
+        displayCountValue = max(0, displayCountValue - 1)
+        record("display cut")
+        displayHandler?(displayCountValue)
+        return .disconnected(id: 1)
+    }
+
+    func reconnect() async -> DisplayController.Outcome {
+        displayCutCalls += 1
+        if let failure = displayCutFailure {
+            record("display reconnect failed: \(failure)")
+            return .failed(reason: failure)
+        }
+        guard !builtinIsOnline else { return .unchanged(id: 1) }
+        builtinIsOnline = true
+        if !onlineIDs.contains(1) { onlineIDs.append(1) }
+        displayCountValue += 1
+        record("display reconnect")
+        displayHandler?(displayCountValue)
+        return .reconnected(id: 1)
+    }
+
+    // MARK: - IdleSleepPreventing
+
+    var isHolding: Bool { idleSleepHolding }
+
+    func apply(enabled: Bool) -> Bool {
+        idleSleepRequests.append(enabled)
+        let holding = enabled && idleSleepGranted
+        idleSleepHolding = holding
+        record("idle sleep \(holding ? "held" : "released")")
+        return holding
     }
 
     // MARK: - StateStoring

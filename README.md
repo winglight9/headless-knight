@@ -21,12 +21,28 @@
 | 关闭蓝牙 | 蓝牙断电，不然外设能把机器叫醒 |
 | 暂停 Time Machine | `tmutil disable`，备份一起来就是几十分钟不睡 |
 | 退出挡睡眠的程序 | `terminate` → `forceTerminate`，只退真的挡睡眠的 |
+| 断开内建屏 | SkyLight `CGSConfigureDisplayEnabled`，勾上就摘掉，唤醒后维持 |
+| 防止空闲睡眠 | `PreventUserIdleSystemSleep` 断言，出门自动放开、回来接上 |
 
 **拔线之后**：看「拔线前记下的那块屏」还在不在，不看显示器数量——拔线后系统常留一个幽灵屏，数量一直是 1。
 
 **回来之后**：按出门前的快照还原，再从 `pmset -g log` 读出这一趟真睡了多久、被什么唤醒、掉了多少电。
 
 **增强模式**（默认开）：没结束外出、机器又连续醒着满 5 分钟，就发通知、倒计时 30 秒、再让它睡一次。只在外接屏已拔掉时生效。
+
+**没有内建屏**（默认关）：勾上就把内建屏真的从显示拓扑里摘掉，取消勾选接回来。
+拆了屏的机器上 macOS 照样会报一块 EDID 完全正常的内建屏，软件分辨不出真假——按用户
+说的做，比猜可靠。断开之后那块屏不再耗电，也不会再有假的「内屏在线」信号干扰拔线判断。
+唤醒、插拔后系统会把屏装回来，0.3 秒后再摘一次。⌘H 随时切换。
+
+**防止空闲睡眠**（默认开）：不让系统因为「没人动」自己睡。它不挡 `pmset sleepnow`，
+所以外出的自动睡眠照常；出门流程里会自动放开，回来按设置接上。
+
+接不回内建屏的时候（App 崩了、设置丢了），命令行还有一条路：
+
+```bash
+/Applications/Knight.app/Contents/MacOS/Knight --restore-builtin
+```
 
 ## 安装
 
@@ -40,7 +56,7 @@ macOS 13+，Xcode 15 命令行工具即可。
 
 ```bash
 ./scripts/swift.sh build     # 编译
-./scripts/swift.sh test      # 259 条测试
+./scripts/swift.sh test      # 294 条测试
 ./scripts/build-app.sh       # build/Knight.app
 ./scripts/make-dmg.sh        # build/Knight.dmg
 ```
@@ -58,7 +74,7 @@ macOS 13+，Xcode 15 命令行工具即可。
 Sources/HKMKit/                核心逻辑：pmset、断言、显示器、唤醒日志、蓝牙、共享服务，不依赖 UI
 Sources/HeadlessKnightMaster/  菜单栏 App（SwiftUI + AppKit）
 Sources/hkm-helper/            root 提权小工具，只做 pmset 那几件事
-Tests/                         259 条测试，含假时钟与假系统
+Tests/                         294 条测试，含假时钟与假系统
 docs/design.md                 设计文档：为什么这么设计、踩过哪些坑
 preview/ui.html                界面设计稿
 ```

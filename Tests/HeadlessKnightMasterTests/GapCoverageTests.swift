@@ -42,6 +42,8 @@ private func gapHarness(
         sharing: base.sharing,
         timeMachine: base.timeMachine,
         displays: base.displays,
+        displayCutter: base.displayCutter,
+        idleSleep: base.idleSleep,
         store: store ?? base.store,
         notifier: base.notifier,
         loginItem: base.loginItem,

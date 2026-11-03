@@ -49,18 +49,35 @@ struct SettingsView: View {
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
+                            Text(L("防止空闲睡眠"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.ink)
+                            Text(idleSleepText)
+                                .font(.system(size: 10))
+                                .foregroundStyle(idleSleepProblem ? Theme.red : Theme.tertiaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } trailing: {
+                        CapsuleToggle(isOn: state.settings.preventIdleSleep) {
+                            state.togglePreventIdleSleep()
+                        }
+                    }
+                    HairlineDivider()
+                    SettingsRow {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(L("没有内建屏"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text(L("拆掉屏的机器勾上，否则拔了线可能不睡"))
+                            Text(builtinText)
                                 .font(.system(size: 10))
-                                .foregroundStyle(Theme.tertiaryInk)
+                                .foregroundStyle(builtinProblem ? Theme.red : Theme.tertiaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } trailing: {
                         CapsuleToggle(isOn: state.settings.noBuiltinDisplay) {
                             state.toggleNoBuiltinDisplay()
                         }
+                        .disabled(!state.isBuiltinCutAvailable || state.isBusy)
                     }
                     HairlineDivider()
                     SettingsRow {
@@ -143,6 +160,37 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 22)
             }
+        }
+    }
+
+    /// 「防止空闲睡眠」那一行的小字。
+    ///
+    /// 勾着但没拿到断言时要说出来——不然用户以为机器不会睡了，结果半夜自己睡过去。
+    private var idleSleepText: String {
+        if state.settings.preventIdleSleep, !state.idleSleepHeld {
+            return L("系统没允许，这一项没生效")
+        }
+        return L("勾上后机器不会自己睡；出门时会自动放开")
+    }
+
+    private var idleSleepProblem: Bool {
+        state.settings.preventIdleSleep && !state.idleSleepHeld
+    }
+
+    /// 「没有内建屏」那一行的小字：说现在到底断没断，不替开关说话。
+    private var builtinText: String {
+        guard state.settings.noBuiltinDisplay else {
+            return L("拆掉屏的机器勾上：勾上就把内建屏摘掉")
+        }
+        return state.builtinCutState.summary
+    }
+
+    /// 勾着「没有内建屏」却还接着，就是有问题，得红字。
+    private var builtinProblem: Bool {
+        guard state.settings.noBuiltinDisplay else { return false }
+        switch state.builtinCutState {
+        case .connected, .failed, .unsupported: return true
+        case .disconnected, .unknown: return false
         }
     }
 }

@@ -10,6 +10,8 @@ final class StatusItemController: NSObject {
     private var cancellables: Set<AnyCancellable> = []
     /// 出门流程进行中才注册的「结束外出」快捷键。
     private var endAwayHotKey: GlobalHotKey?
+    /// 常驻的「断开 / 接回内建屏」。屏黑了只有它还够得着。
+    private var builtinHotKey: GlobalHotKey?
 
     init(state: AppState) {
         self.state = state
@@ -39,6 +41,22 @@ final class StatusItemController: NSObject {
             .sink { [weak self] _ in self?.syncEndAwayHotKey() }
             .store(in: &cancellables)
         syncEndAwayHotKey()
+
+        // ⌘H：常驻，按一下接回内建屏、再按一下断开。
+        //
+        // 它必须常驻——「断开」这个动作本身就可能发生在只剩一块屏的时候，
+        // 那一刻正是它要救命的时候。所以这个组合在全天候被我们占着，代价是
+        // 别的 App 的「隐藏窗口」会失效，用户知情并同意。
+        builtinHotKey = GlobalHotKey(
+            keyCode: GlobalHotKey.builtinKeyCode,
+            modifiers: GlobalHotKey.builtinModifiers,
+            label: GlobalHotKey.builtinLabel
+        ) { [weak self] in
+            self?.state.toggleBuiltinByHotKey()
+        }
+        if builtinHotKey == nil {
+            HKMLog.error("快捷键 \(GlobalHotKey.builtinLabel) 注册失败（可能被别的软件占着），屏黑了只能靠命令行")
+        }
 
         // 机器被叫醒时把窗口摆出来：那一刻用户最想看到的是「结束外出模式」。
         state.onSystemWake = { [weak self] in

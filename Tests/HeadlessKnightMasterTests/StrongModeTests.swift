@@ -117,7 +117,9 @@ struct StrongModeTests {
         // 不触发——而「外接屏插着」那条已经守住了真有人在用的情况。
         sim.builtinIsOnline = true
         for _ in 0..<4 { tick(sim, state, seconds: 30) }
-        await waitFor { sim.sleepNowCalls == 2 }
+        // 等「叫了第二次」还要等「验证也走完」：`sleepNowCalls` 是在请求那一刻 +1 的，
+        // 只等它会在 `sleepOutcome` 还停在 `.requesting` 时就去断言，是个时序陷阱。
+        await waitFor { sim.sleepNowCalls == 2 && state.sleepOutcome == .slept }
 
         #expect(sim.sleepNowCalls == 2)
         #expect(state.sleepOutcome == .slept)

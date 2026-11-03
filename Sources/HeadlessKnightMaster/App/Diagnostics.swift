@@ -51,6 +51,15 @@ enum Diagnostics {
         print(L("\n== 增强模式 / 远程登录 =="))
         let settings = SessionStore().loadSettings()
         print(L("  增强模式：{0}", settings.strongMode ? L("开（连续醒着满 5 分钟强制睡眠）") : L("关")))
+        print(L("  防止空闲睡眠：{0}", settings.preventIdleSleep ? L("开") : L("关")))
+        print(L("  没有内建屏：{0}", settings.noBuiltinDisplay ? L("开") : L("关")))
+        let cutter = DisplayController()
+        if cutter.isAvailable {
+            let id = cutter.builtinDisplayID()
+            print(L("  内建屏：{0}", id.map { "ID \($0) · \(cutter.isBuiltinActive ? L("亮着") : L("已断开"))" } ?? L("找不到")))
+        } else {
+            print(L("  内建屏：这个系统上拿不到断屏接口"))
+        }
         let remote = RemoteSessionProbe().remoteLoginsSync()
         print(remote.isEmpty ? L("  远程登录：没有") : L("  远程登录：{0}", remote.joined(separator: L("；"))))
 
