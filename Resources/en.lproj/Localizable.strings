@@ -137,6 +137,8 @@
 "再试一次睡眠" = "Try sleeping again";
 "不拔线，现在就睡" = "Sleep now, without unplugging";
 "结束外出模式" = "End away mode";
+"结束外出模式（{0}）" = "End away mode ({0})";
+"打开面板" = "Open panel";
 "电量读取中" = "Reading battery";
 "{0}% · 没有下降" = "{0}% · no drop";
 "{0}% · 下降 {1}%" = "{0}% · down {1}%";

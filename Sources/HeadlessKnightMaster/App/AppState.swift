@@ -152,6 +152,16 @@ public final class AppState: ObservableObject {
     ///   · 无头 MacBook：外接屏消失，冒出一块影子屏 → 基线里那块不见了
     /// 显示器只是休眠（DPMS）时仍然算 online，所以不会误判。
     private var baselineDisplayIDs: [CGDirectDisplayID] = []
+    /// 测试用：基线到底记成了什么。真机上靠日志看，测试里靠它。
+    var baselineDisplayIDsForTesting: [CGDirectDisplayID] { baselineDisplayIDs }
+    /// 进拔线页的时刻。基线一直空着时，用它来算「等了多久」。
+    private var readyPageEnteredAt: Date?
+    /// 基线空着多久之后，才允许拿「眼前没有一块真外接屏」当拔线判据。
+    ///
+    /// 45 秒是有来历的：2026-11-03 12:40 关掉 MacHead 之后，显示器拓扑抖了
+    /// 将近 20 秒（外接屏 12:40:07 消失、12:40:28 才回来）。那阵子要是判成
+    /// 「已经拔线」，软件会在用户还在收拾东西的时候把机器睡掉。
+    private static let emptyBaselineGraceSeconds: TimeInterval = 45
     private var countdownPurpose: CountdownPurpose = .none
     private var didNotifyReturn = false
     private var didMarkDetached = false
@@ -1035,8 +1045,14 @@ public final class AppState: ObservableObject {
         baselineDisplayIDs = deps.displays.displaySnapshots()
             .filter { $0.isRealDisplay && !$0.builtin }
             .map(\.id)
+        readyPageEnteredAt = deps.clock.now
         displaysDetached = isDisplayDetached()
         HKMLog.info("进入拔线页：当前显示器 \(displayCount) 个，基线 \(baselineDisplayIDs)（\(deps.displays.describeDisplays())），主屏 \(deps.displays.mainDisplayID())")
+        if baselineDisplayIDs.isEmpty {
+            // 这一刻没有真外接屏可记（常见于刚关了 MacHead、或拔线动作本身让拓扑
+            // 停摆了一两秒）。等它出现会自动补记，这里先留一行，出事好查。
+            HKMLog.info("基线是空的：等真外接屏出现再补记，否则拔线判不出来")
+        }
         deps.displays.setHandler { [weak self] count in
             self?.handleDisplayChange(count)
         }
@@ -1049,6 +1065,36 @@ public final class AppState: ObservableObject {
     }
 
     // MARK: - Away mode: unplug & sleep
+
+    /// 基线空了就重新记一次。
+    ///
+    /// 为什么需要补记：进拔线页那一刻，显示器拓扑很可能正在翻腾——我们刚关了
+    /// MacHead、刚拔了线、系统还在重排窗口，外接屏会短暂地从列表里消失。基线
+    /// 要是正好记在这个空档里，就成了空数组，于是：
+    ///
+    ///   · 「基线里那些 ID 不见了」这条判据永远不成立（空集是任何集合的子集）；
+    ///   · 只剩 `activeDisplayCount() == 0` 这条兜底，而拆了屏的机器上那个**假内建屏**
+    ///     一直算一块活动显示器，于是它永远不成立；
+    ///   · 用户拔了线，软件一声不响——键盘灯还亮着，他以为没生效，只好整趟重来。
+    ///
+    /// 2026-11-03 12:40 就是这样：12:40:07 外接屏短暂消失，12:40:08 进拔线页，
+    /// 基线记成 `[]`；12:40:28 外接屏回来了，可基线不会自己补，那次出门从头到尾
+    /// 没判出「已拔线」。
+    ///
+    /// 所以：只要页还没离开、基线还是空的、而眼前又有真外接屏了，就把它记成基线。
+    /// 这不是「猜」——用户站在机器前面，他接下来要拔的就是眼前这块屏。
+    private func adoptBaselineIfEmpty() {
+        guard screen == .readyToUnplug, baselineDisplayIDs.isEmpty else { return }
+        let ids = deps.displays.displaySnapshots()
+            .filter { $0.isRealDisplay && !$0.builtin }
+            .map(\.id)
+        guard !ids.isEmpty else { return }
+        baselineDisplayIDs = ids
+        // 刚看到外接屏，这一刻肯定还没拔。
+        displaysDetached = false
+        HKMLog.info("补记拔线基线：\(ids)（进拔线页时一块外接屏都没看到）")
+        narrate("[8/8] 重新记下要拔的屏：\(ids)")
+    }
 
     /// 用户让我拔的那块屏，现在还在不在。
     ///
@@ -1071,6 +1117,16 @@ public final class AppState: ObservableObject {
         let now = deps.displays.onlineDisplayIDs()
         guard !baselineDisplayIDs.isEmpty else {
             // 进页面时就已经一块外接屏都没有了，只能退回数量判断。
+            //
+            // 但数量这条在拆了屏的机器上**永远不成立**：那块假内建屏一直算一块
+            // 活动显示器。用户既然在设置里声明过「这台机器没有内建屏」，就按
+            // 「眼前还有没有一块真外接屏」来判——只是要等满一段宽限，别把刚关掉
+            // MacHead 那阵子的拓扑抖动当成「他已经拔线走了」。
+            if settings.noBuiltinDisplay,
+               let entered = readyPageEnteredAt,
+               deps.clock.now.timeIntervalSince(entered) >= Self.emptyBaselineGraceSeconds {
+                return !snapshots.contains { $0.isRealDisplay && !$0.builtin }
+            }
             return deps.displays.activeDisplayCount() == 0
         }
         if !snapshots.contains(where: { $0.isRealDisplay && !$0.builtin }) { return true }
@@ -1091,9 +1147,14 @@ public final class AppState: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 if Task.isCancelled { return }
                 guard let self, self.screen == .readyToUnplug else { return }
+                // 每拍先看基线要不要补记：进页面那个空档记成空数组的话，
+                // 下面两条判据都会失效（见 `adoptBaselineIfEmpty`）。
+                self.adoptBaselineIfEmpty()
                 let count = self.deps.displays.activeDisplayCount()
                 let detached = self.isDisplayDetached()
-                if detached || count != self.displayCount {
+                // 基线还空着的时候，每一拍都要重新算一遍：宽限期一到，判据会从
+                // 「数量」切成「有没有真外接屏」，而那一刻显示器数量并不会变化。
+                if detached || count != self.displayCount || self.baselineDisplayIDs.isEmpty {
                     self.handleDisplayChange(count)
                 }
             }
@@ -1107,6 +1168,8 @@ public final class AppState: ObservableObject {
 
     private func handleDisplayChange(_ count: Int) {
         displayCount = count
+        // 显示器回来的这一瞬间，顺手把空基线补上——否则拔线那一刻没判据。
+        adoptBaselineIfEmpty()
         let detached = isDisplayDetached()
         // 盖子开着 = 人在电脑前。这是「拔线」之外的第二条线索，以前完全没有：
         // 外接屏拔掉之后基线永远是空的，用户掀开盖子软件也照样认为他还在外面。
@@ -1639,6 +1702,7 @@ public final class AppState: ObservableObject {
         sleepRetryTask?.cancel()
         sleepRetryTask = nil
         baselineDisplayIDs = []
+        readyPageEnteredAt = nil
         displaysDetached = false
         // 这一趟到此为止，别让上一轮留下的「没睡着」跟着用户回首页。
         sleepOutcome = .idle
@@ -1703,8 +1767,53 @@ public final class AppState: ObservableObject {
 
     // MARK: - Away mode: leaving
 
+    /// 快捷键（⌃⌥⌘E）走的路。
+    ///
+    /// 和点图标、点面板上那个按钮是**同一条**逻辑，区别只在于它不依赖窗口：
+    /// 面板摆错屏、被挡住、按键抢不到焦点的时候，这是唯一的出口。
+    public func endAwayByShortcut() {
+        HKMLog.info("快捷键：结束外出模式（页面 \(screen)，phase \(session.map { String(describing: $0.phase) } ?? "无记录")）")
+        switch screen {
+        case .away:
+            Task { await finishAway() }
+        case .readyToUnplug, .blocked:
+            abortAway()
+        default:
+            // 首页、报告页这些地方按了不该有反应：用户没在外出的路上。
+            HKMLog.info("快捷键：当前页面没有可结束的流程，忽略")
+        }
+    }
+
+    /// 现在按 Ctrl+Opt+Cmd+E 会不会有反应。菜单和日志用它。
+    public var canEndAway: Bool {
+        switch screen {
+        case .away, .readyToUnplug, .blocked: return true
+        default: return false
+        }
+    }
+
     public func finishAway() async {
-        guard let state = session, state.phase == .away, !isBusy else { return }
+        // 每一下都记。2026-11-03 下午他说「触摸板点按了好多下都不行」，日志里
+        // 却一个字都没有——分不清是「点没送到界面」还是「送到了被 guard 挡掉」。
+        // 这两种是完全不同的毛病，不能猜。
+        HKMLog.info("点了「结束外出模式」（phase \(session.map { String(describing: $0.phase) } ?? "无记录")，isBusy \(isBusy)，isEndingAway \(isEndingAway)）")
+        guard !isBusy else {
+            HKMLog.info("结束外出：正在处理别的动作，这次点击先记下不动")
+            return
+        }
+        guard let state = session, state.phase == .away else {
+            // 界面停在外出页，内存里却没有这一趟的记录（状态文件被删、或者上一趟
+            // 已经结束）。以前这里直接 return，按钮就成了死的：点什么都没反应，
+            // 也不说为什么。现在按「这一趟已经不存在」处理——按安全默认值把机器
+            // 还原、回首页，至少不会把蓝牙关着、做梦都睡不了的状态留给用户。
+            HKMLog.info("结束外出：没有进行中的记录，按安全默认值还原后回首页")
+            isBusy = true
+            isEndingAway = true
+            await restoreAndReturnHome()
+            isEndingAway = false
+            isBusy = false
+            return
+        }
         // 同理：这一趟结束了，后台那条重试通道作废。
         awayGeneration &+= 1
         isBusy = true

@@ -99,15 +99,15 @@ final class PopoverHost: NSObject, NSWindowDelegate {
     func show(relativeTo button: NSStatusBarButton) {
         anchorButton = button
         resize()
-        place()
+        place(force: true)
         activateApp()
         panel.makeKeyAndOrderFront(nil)
         resize()
-        place()
+        place(force: true)
         // 状态栏窗口在启动初期还没摆好，这会儿拿到的锚点可能是假的。
         // 等菜单栏布好之后再对一次位置，用户不会看见这个过程。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.place()
+            self?.place(force: true)
         }
     }
 
@@ -121,7 +121,12 @@ final class PopoverHost: NSObject, NSWindowDelegate {
     var onHidden: (@MainActor () -> Void)?
 
     /// 流程进行中，用户又点了一下图标：别关，把它提到前面就行。
+    ///
+    /// 顺带重新摆一次位置。以前只 `orderFrontRegardless`，面板要是被摆到了
+    /// 一块看不见的屏上（拆掉的内建屏在系统眼里还在），再点多少次图标也只是
+    /// 把一块看不见的窗口提到前面——用户看到的就是「点了没反应」。
     func bringToFront() {
+        place()
         panel.orderFrontRegardless()
     }
 
@@ -189,22 +194,47 @@ final class PopoverHost: NSObject, NSWindowDelegate {
         return PanelPlacement.isFullyVisible(panel.frame, in: visible)
     }
 
+    /// 按钮自己算出来的矩形，可能是启动初期那种假坐标（落在屏幕外面）。
+    private var rawAnchorRect: CGRect? {
+        guard let button = anchorButton, let window = button.window else { return nil }
+        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        guard rect.width > 1, rect.height > 1 else { return nil }
+        return rect
+    }
+
+    private func screenContaining(_ point: CGPoint) -> NSScreen? {
+        NSScreen.screens.first { $0.frame.contains(point) }
+    }
+
+    /// 面板该贴在哪块屏上。
+    ///
+    /// 以前是 `button.window?.screen ?? NSScreen.main`，两个都可能答错：多屏时
+    /// 状态栏窗口横跨整条菜单栏，问它要 screen 经常给回主屏；而这台机器的
+    /// **内建屏是拆掉的**，系统照样把它算一块屏、还算主屏。结果面板被摆到一块
+    /// 不存在的屏上（见 `PanelPlacement.targetScreen`）。
     private func anchorScreen() -> NSScreen? {
-        anchorButton?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        let target = PanelPlacement.targetScreen(
+            anchor: rawAnchorRect,
+            pointer: NSEvent.mouseLocation,
+            screens: NSScreen.screens.map(\.frame)
+        )
+        guard let target else { return nil }
+        return NSScreen.screens.first { $0.frame == target }
     }
 
     private func anchorRect() -> CGRect? {
-        guard let button = anchorButton, let window = button.window else { return nil }
-        let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
+        guard let rect = rawAnchorRect else { return nil }
         // 启动那一下状态栏窗口还没就位，`convertToScreen` 会算出 (0, -23) 这种
         // 落在屏幕外面的坐标。拿它去摆窗口，面板就跑到屏幕左下角去了。
-        // 菜单栏按钮必然在上半屏，不满足就当没有锚点。
-        guard let screen = anchorScreen(), rect.midY > screen.frame.midY else { return nil }
+        // 真正的菜单栏按钮必然落在某一块屏里，落不到就是假锚点。
+        guard screenContaining(CGPoint(x: rect.midX, y: rect.midY)) != nil else { return nil }
         return rect
     }
 
     /// 摆到状态栏按钮下面，并且保证整块都在屏幕里。
-    private func place() {
+    ///
+    /// - Parameter force: 用户明确要求重摆（刚点开面板）时传 true。
+    private func place(force: Bool = false) {
         guard let visible = anchorScreen()?.visibleFrame else { return }
         let anchor = anchorRect()
         let origin = PanelPlacement.origin(
@@ -212,10 +242,15 @@ final class PopoverHost: NSObject, NSWindowDelegate {
             content: panel.frame.size,
             visible: visible
         )
-        if panel.frame.origin != origin {
-            HKMLog.info("面板摆位：锚点 \(anchor.map { "\($0)" } ?? "无")，尺寸 \(panel.frame.size)，可用 \(visible) → \(origin)")
-            panel.setFrameOrigin(origin)
+        guard panel.frame.origin != origin else { return }
+        // 鼠标正压在面板上就别挪：多半正在按某个按钮，挪一下这半下点击就作废了，
+        // 用户看到的是「点了没反应」。只有当面板真的跑到屏幕外才让位。
+        if !force, panel.frame.contains(NSEvent.mouseLocation),
+           PanelPlacement.isFullyVisible(panel.frame, in: visible) {
+            return
         }
+        HKMLog.info("面板摆位：锚点 \(anchor.map { "\($0)" } ?? "无")，尺寸 \(panel.frame.size)，可用 \(visible) → \(origin)")
+        panel.setFrameOrigin(origin)
     }
 }
 
@@ -223,4 +258,24 @@ final class PopoverHost: NSObject, NSWindowDelegate {
 final class PopupPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// 第一下点击就算数。
+    ///
+    /// 窗口不是 key（或者 App 不在前台）时，AppKit 会**把这一下吞掉**，只用来
+    /// 激活窗口——按钮纹丝不动。用户从「外出中」回来，第一件事就是点「结束
+    /// 外出模式」，那一下正好是「第一下」：点了没反应，再点一下才动，他就以为
+    /// 按钮坏了。触摸板轻点尤其容易踩到，因为那一对 mouseDown/Up 只有几毫秒，
+    /// 中间没有第二下可以补救。
+    ///
+    /// 所以在事件**分发之前**先把窗口变成 key（`mouseDown` 里做已经太晚了：
+    /// 「不是 key 就吞掉」这一步发生在 `sendEvent` 里，根本轮不到 `mouseDown`）。
+    /// 试过给 hosting view 加 `acceptsFirstMouse`——`NSHostingController` 在
+    /// init 里就把 view 装好了，`loadView` 根本不走，那条路是死的（有测试守）。
+    override func sendEvent(_ event: NSEvent) {
+        if !isKeyWindow,
+           event.type == .leftMouseDown || event.type == .rightMouseDown || event.type == .otherMouseDown {
+            makeKey()
+        }
+        super.sendEvent(event)
+    }
 }

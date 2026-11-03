@@ -115,6 +115,11 @@ struct PopupButton: View {
     let title: String
     var style: Style = .primary
     var isEnabled: Bool = true
+    /// 右下角那个键盘快捷键提示，比如 `⌃⌥⌘E`。没有就传 nil。
+    ///
+    /// 塞在按钮里而不是单独加一行字：这页已经有两行辅助文字了，再多一行就又回到
+    /// 「面板里全是小字，没人看」的老路上。
+    var shortcut: String?
     let action: () -> Void
 
     var body: some View {
@@ -126,7 +131,18 @@ struct PopupButton: View {
                 .background(background)
                 .foregroundStyle(foreground)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(alignment: .trailing) {
+                    if let shortcut {
+                        Text(shortcut)
+                            .font(.system(size: 10, weight: .regular, design: .rounded))
+                            .foregroundStyle(foreground.opacity(0.45))
+                            .padding(.trailing, 11)
+                    }
+                }
                 .overlay(border)
+                // 整块（含内边距、含 blank 的 ghost 样式）都算可点区域。
+                // 触摸板轻点只发一对几毫秒的 mouseDown/Up，命中区域越实在越好。
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

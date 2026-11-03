@@ -23,6 +23,9 @@ final class AwayHarness {
         // 默认 0：绝大多数测试关心的是「最终停在哪一页」，不该等。
         // 要观察「正在请求睡眠」这一段的话，得给它一个非零窗口。
         sleepVerifySeconds: Double = 0,
+        // 拔线检测的兜底轮询。默认关掉（3600 秒）：绝大多数测试靠显示器回调
+        // 就够了。要验证「回调漏了也得判出来」的那一类，把它调小。
+        unplugPollSeconds: Double = 3600,
         _ configure: (SimulatedServices) -> Void = { _ in }
     ) {
         let sim = SimulatedServices()
@@ -40,7 +43,7 @@ final class AwayHarness {
                 countdownTick: 0.01,
                 detectPollSeconds: 0.05,
                 sleepVerifySeconds: sleepVerifySeconds,
-                unplugPollSeconds: 3600,
+                unplugPollSeconds: unplugPollSeconds,
                 sleepRetrySeconds: 3600
             )
         )

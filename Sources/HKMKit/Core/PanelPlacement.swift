@@ -47,4 +47,30 @@ public enum PanelPlacement {
     public static func isFullyVisible(_ frame: CGRect, in visible: CGRect) -> Bool {
         visible.insetBy(dx: margin, dy: margin).contains(frame)
     }
+
+    /// 面板该挂到**哪一块**屏上。
+    ///
+    /// 不能靠「按钮所在的那个 `NSWindow` 的 screen」：多屏时状态栏窗口会横跨
+    /// 整条菜单栏，问回来的经常是主屏，而按钮其实画在另一块屏上。猜错的代价很
+    /// 实在——2026-11-03 15:45，锚点在 x=-3688，可用区域却是 1512×883 那块屏，
+    /// 面板就被摆到了用户**已经拆掉**的内建屏上：他眼前这块屏什么都没有，图标
+    /// 点多少次都不出来，看起来就像按钮坏了。
+    ///
+    /// 顺序：锚点落在哪块屏就用哪块（几何事实）→ 鼠标在哪块屏就用哪块（人正在
+    /// 看的就是它）→ 剩下第一块。
+    ///
+    /// - Parameters:
+    ///   - anchor: 状态栏按钮的屏幕坐标矩形，拿不到传 nil。
+    ///   - pointer: 鼠标指针的屏幕坐标。
+    ///   - screens: 各屏的 `frame`（不是 `visibleFrame`）。
+    public static func targetScreen(anchor: CGRect?, pointer: CGPoint, screens: [CGRect]) -> CGRect? {
+        let probe = anchor.map { CGPoint(x: $0.midX, y: $0.midY) }
+        if let probe, let hit = screens.first(where: { $0.contains(probe) }) {
+            return hit
+        }
+        if let hit = screens.first(where: { $0.contains(pointer) }) {
+            return hit
+        }
+        return screens.first
+    }
 }

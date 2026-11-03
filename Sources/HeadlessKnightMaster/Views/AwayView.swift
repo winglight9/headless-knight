@@ -52,8 +52,12 @@ struct AwayView: View {
                 PopupButton(
                     title: state.isEndingAway ? L("正在恢复设置…") : L("结束外出模式"),
                     style: .ghost,
-                    isEnabled: !state.isBusy && !state.isEndingAway
+                    isEnabled: !state.isBusy && !state.isEndingAway,
+                    // 按钮上直接写快捷键：面板摆错屏、或者抢不到焦点的时候，
+                    // 键盘是唯一还能用的出口。
+                    shortcut: GlobalHotKey.endAwayLabel
                 ) {
+                    HKMLog.info("面板：按下了「结束外出模式」")
                     Task { await state.finishAway() }
                 }
 

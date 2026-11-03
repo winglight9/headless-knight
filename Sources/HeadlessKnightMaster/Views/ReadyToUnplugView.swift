@@ -165,7 +165,8 @@ struct ReadyToUnplugView: View {
                 PopupButton(
                     title: state.isEndingAway ? L("正在恢复设置…") : L("结束外出模式"),
                     style: .ghost,
-                    isEnabled: !state.isEndingAway && !state.isBusy
+                    isEnabled: !state.isEndingAway && !state.isBusy,
+                    shortcut: GlobalHotKey.endAwayLabel
                 ) {
                     state.cancelReadyToUnplug()
                 }
