@@ -156,9 +156,14 @@ struct SettingsView: View {
                 }
                 .padding(.top, 6)
 
-                TinyText(text: L("无头骑士大师 {0}　·　⌘Q 也可以退出", state.appVersion), alignment: .center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 22)
+                VStack(spacing: 5) {
+                    // 快捷键得写在软件里。上一个版本把它做了，却没有任何地方提过，
+                    // 用户只能靠读更新日志才知道有这么一条退路。
+                    TinyText(text: L("⌘H 断开或接回内建屏"), alignment: .center)
+                    TinyText(text: L("无头骑士大师 {0}　·　⌘Q 也可以退出", state.appVersion), alignment: .center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 18)
             }
         }
     }

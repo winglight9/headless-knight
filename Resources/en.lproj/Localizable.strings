@@ -241,6 +241,7 @@
 "亮着" = "on";
 "已断开" = "disconnected";
 "找不到" = "not found";
+"⌘H 断开或接回内建屏" = "⌘H toggles the built-in display";
 "通知" = "Notifications";
 "试一下 ›" = "Try it ›";
 "已安装" = "Installed";
