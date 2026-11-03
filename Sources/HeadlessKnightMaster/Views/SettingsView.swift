@@ -8,16 +8,8 @@ struct SettingsView: View {
         PopupScaffold(status: .settings, title: L("设置"), onClose: { state.dismissSettings() }) {
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    SettingsRow {
-                        Text(L("开机自启"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.ink)
-                    } trailing: {
-                        CapsuleToggle(isOn: state.settings.launchAtLogin) {
-                            state.toggleLaunchAtLogin()
-                        }
-                    }
-                    HairlineDivider()
+                    SettingsGroupTitle(L("外出"))
+
                     SettingsRow {
                         Text(L("拔线后等待"))
                             .font(.system(size: 12))
@@ -36,7 +28,7 @@ struct SettingsView: View {
                             Text(L("增强模式"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text(L("机器连续醒着 5 分钟，又没结束外出，就再睡一次"))
+                            Text(L("连续醒着 5 分钟再睡一次"))
                                 .font(.system(size: 10))
                                 .foregroundStyle(Theme.tertiaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -79,6 +71,18 @@ struct SettingsView: View {
                         }
                         .disabled(!state.isBuiltinCutAvailable || state.isBusy)
                     }
+
+                    SettingsGroupTitle(L("系统"))
+
+                    SettingsRow {
+                        Text(L("开机自启"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.ink)
+                    } trailing: {
+                        CapsuleToggle(isOn: state.settings.launchAtLogin) {
+                            state.toggleLaunchAtLogin()
+                        }
+                    }
                     HairlineDivider()
                     SettingsRow {
                         VStack(alignment: .leading, spacing: 2) {
@@ -119,7 +123,9 @@ struct SettingsView: View {
                             .disabled(state.isBusy)
                         }
                     }
-                    HairlineDivider()
+
+                    SettingsGroupTitle(L("其他"))
+
                     SettingsRow {
                         Text(L("重新查看引导"))
                             .font(.system(size: 12))
@@ -154,16 +160,11 @@ struct SettingsView: View {
                         .disabled(state.isBusy)
                     }
                 }
-                .padding(.top, 6)
+                .padding(.top, 2)
 
-                VStack(spacing: 5) {
-                    // 快捷键得写在软件里。上一个版本把它做了，却没有任何地方提过，
-                    // 用户只能靠读更新日志才知道有这么一条退路。
-                    TinyText(text: L("⌘H 断开或接回内建屏"), alignment: .center)
-                    TinyText(text: L("无头骑士大师 {0}　·　⌘Q 也可以退出", state.appVersion), alignment: .center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 18)
+                TinyText(text: L("无头骑士大师 {0}　·　⌘Q 也可以退出", state.appVersion), alignment: .center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 16)
             }
         }
     }
@@ -175,7 +176,7 @@ struct SettingsView: View {
         if state.settings.preventIdleSleep, !state.idleSleepHeld {
             return L("系统没允许，这一项没生效")
         }
-        return L("勾上后机器不会自己睡；出门时会自动放开")
+        return L("不让机器自己睡，出门自动放开")
     }
 
     private var idleSleepProblem: Bool {
@@ -183,9 +184,14 @@ struct SettingsView: View {
     }
 
     /// 「没有内建屏」那一行的小字：说现在到底断没断，不替开关说话。
+    ///
+    /// ⌘H 写在这里，不单独占一行——它就是这个开关的快捷键，放一起才找得到。
     private var builtinText: String {
         guard state.settings.noBuiltinDisplay else {
-            return L("拆掉屏的机器勾上：勾上就把内建屏摘掉")
+            return L("拆掉屏就勾上 · ⌘H 切换")
+        }
+        if case .disconnected = state.builtinCutState {
+            return L("已断开 · ⌘H 切换")
         }
         return state.builtinCutState.summary
     }
@@ -200,6 +206,29 @@ struct SettingsView: View {
     }
 }
 
+/// 设置页的分组标题。
+///
+/// 之前是八行平铺，开关、操作、状态混在一起，用户得一行行读才知道哪些是同一类事。
+/// 组标题只占十几像素，但把「出门才用到的」和「装好就不用管的」分开了。
+struct SettingsGroupTitle: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        HStack {
+            Text(text)
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.tertiaryInk)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 13)
+        .padding(.bottom, 3)
+    }
+}
+
 struct SettingsRow<Leading: View, Trailing: View>: View {
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
@@ -210,6 +239,6 @@ struct SettingsRow<Leading: View, Trailing: View>: View {
             Spacer(minLength: 8)
             trailing()
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 9)
     }
 }

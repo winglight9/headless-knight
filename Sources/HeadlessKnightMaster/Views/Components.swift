@@ -59,12 +59,15 @@ struct PopupScaffold<Content: View>: View {
                 if let onGear {
                     // 图标还是 14pt，但可点区域撑到 28×28：以前 14×14 的按钮，
                     // 鼠标稍微偏一点就点空，用户要点好几次才进得去。
-                    Button(action: onGear) {
-                        GearGlyph()
-                            .frame(width: 14, height: 14)
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
+                        Button(action: onGear) {
+                            // 以前是个自绘的小圆套虚线环，14 像素下看不出是齿轮，
+                            // 用户的原话是「一个菊花」。设置就用系统齿轮，一眼认得出。
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 12.5, weight: .regular))
+                                .foregroundStyle(Theme.tertiaryInk)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
                     .buttonStyle(.plain)
                     .help(L("设置"))
                 }
@@ -89,19 +92,6 @@ struct PopupScaffold<Content: View>: View {
         }
         .frame(width: Theme.width)
         .background(Theme.surface)
-    }
-}
-
-struct GearGlyph: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Theme.tertiaryInk, lineWidth: 1.2)
-                .frame(width: 4.8, height: 4.8)
-            Circle()
-                .stroke(Theme.tertiaryInk, style: StrokeStyle(lineWidth: 1.2, dash: [1.5, 2.6]))
-                .frame(width: 10, height: 10)
-        }
     }
 }
 

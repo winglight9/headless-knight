@@ -242,6 +242,13 @@
 "已断开" = "disconnected";
 "找不到" = "not found";
 "⌘H 断开或接回内建屏" = "⌘H toggles the built-in display";
+"外出" = "Away";
+"系统" = "System";
+"其他" = "Other";
+"连续醒着 5 分钟再睡一次" = "Sleep it again after 5 minutes awake";
+"不让机器自己睡，出门自动放开" = "Won't sleep on its own; released when you leave";
+"拆掉屏就勾上 · ⌘H 切换" = "Tick on a screen-less Mac · ⌘H toggles";
+"已断开 · ⌘H 切换" = "Disconnected · ⌘H toggles";
 "通知" = "Notifications";
 "试一下 ›" = "Try it ›";
 "已安装" = "Installed";
