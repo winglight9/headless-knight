@@ -6,7 +6,7 @@ import IOKit.pwr_mgt
 /// 用 `kIOPMAssertionTypePreventUserIdleSystemSleep`，不是 `PreventSystemSleep`。
 /// 两者的区别很要命：
 ///   · 前者只挡「空闲自动睡」，`pmset sleepnow` 照样能睡——这正是本产品要的，
-///     平时机器醒着当服务器，出门时我们主动叫它睡，不冲突；
+///     平时机器醒着干活，出门时我们主动叫它睡，不冲突；
 ///   · 后者连强制睡眠都挡，一旦勾上，外出模式会把机器留在醒着的状态里。
 ///
 /// 断言跟着进程走：App 被杀掉时内核自己回收，不存在「软件关了机器还醒着」。
@@ -30,7 +30,7 @@ public final class SleepAssertion: @unchecked Sendable {
     private var assertionID: IOPMAssertionID = 0
     private let reason: String
 
-    public init(reason: String = "无头骑士大师：机器正被当作服务器使用") {
+    public init(reason: String = "无头骑士大师：保持清醒") {
         self.reason = reason
     }
 

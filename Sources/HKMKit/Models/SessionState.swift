@@ -86,7 +86,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var noBuiltinDisplay: Bool
     /// 防止空闲睡眠：勾上后机器不会「因为没人动」自己睡。
     ///
-    /// **默认开。** 这台的用法是当服务器，平时最怕的就是空闲自己睡过去。
+    /// **默认开。** 没屏幕的机器平时就是醒着干活，最怕的就是空闲自己睡过去。
     /// 它挡的是空闲睡眠，不挡 `pmset sleepnow`——出门时我们主动叫它睡，
     /// 所以不用让用户先去关这个开关。
     public var preventIdleSleep: Bool
