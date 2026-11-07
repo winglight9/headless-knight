@@ -8,6 +8,16 @@ public struct PmsetSnapshot: Codable, Sendable, Equatable {
         "disablesleep", "sleep", "displaysleep", "womp", "powernap", "tcpkeepalive", "standby"
     ]
 
+    /// 这些键在 `pmset -g custom` 里**按电源类型各有一份**。`disablesleep` 不在里面：
+    /// 它是全局的（只出现在 `pmset -g` 的 `SleepDisabled`）。
+    public static let perSourceKeys = [
+        "sleep", "displaysleep", "womp", "powernap", "tcpkeepalive", "standby"
+    ]
+
+    /// 电池那一套的键名，沿用已经落盘的 `displaysleep_battery` 命名，
+    /// 老状态文件读回来照样能用。
+    public static func batteryKey(for key: String) -> String { "\(key)_battery" }
+
     public var values: [String: Int]
 
     public init(values: [String: Int] = [:]) {

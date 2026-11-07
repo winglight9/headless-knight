@@ -186,6 +186,7 @@
 "清空定时唤醒失败：{0}" = "Couldn't clear scheduled wakes: {0}";
 "恢复 {0} 失败：{1}" = "Couldn't restore {0}: {1}";
 "恢复电池的 displaysleep 失败：{0}" = "Couldn't restore battery display sleep: {0}";
+"恢复电池的 {0} 失败：{1}" = "Couldn't restore battery {0}: {1}";
 "读不到电源日志，无法确认是否真的睡了" = "Can't read the power log, so sleep can't be confirmed";
 "关闭共享服务 {0} 失败：{1}" = "Couldn't turn off {0}: {1}";
 "停止共享服务 {0} 失败（不影响睡眠）：{1}" = "Couldn't stop {0} (doesn't affect sleep): {1}";

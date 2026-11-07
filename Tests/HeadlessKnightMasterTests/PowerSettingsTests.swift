@@ -160,6 +160,21 @@ struct DisplaySleepTests {
         #expect(snapshot["displaysleep_battery"] == 2)
     }
 
+    /// 不只 displaysleep：`sleep` 这类键同样是两套各一份。以前只记了
+    /// displaysleep，还原时 `-a` 就把电池的 `sleep=1` 冲成了插电的 0。
+    @Test("快照要把电池那套的每个键都记下来")
+    func readsEveryBatteryKey() throws {
+        let settings = PowerSettings(
+            runner: TwoCommandRunner(custom: custom, global: " SleepDisabled\t\t1\n"),
+            executor: RecordingExecutor()
+        )
+        let snapshot = try settings.readSnapshot()
+        #expect(snapshot["sleep"] == 0)
+        #expect(snapshot["sleep_battery"] == 1)
+        #expect(snapshot["womp_battery"] == 1)
+        #expect(snapshot["standby_battery"] == 1)
+    }
+
     /// `pmset -a` 会把两套写成同一个值，所以电池那套要单独补一次 `-b`。
     /// 不补的话，用户的「用电池 2 分钟关屏」会被永久改成「永不关屏」。
     @Test("还原时电池那套要单独写一次 -b")
@@ -176,8 +191,29 @@ struct DisplaySleepTests {
             .filter { $0.1["key"] == "displaysleep" }
             .map { ($0.1["scope"] ?? "a", $0.1["value"] ?? "") }
         #expect(displayWrites.count == 2)
-        #expect(displayWrites.contains { $0.0 == "a" && $0.1 == "0" })
+        // 插电那套写 `-c`：有电池数据的时候不能用 `-a`，否则这一下就把电池改成 0 了。
+        #expect(displayWrites.contains { $0.0 == "c" && $0.1 == "0" })
         #expect(displayWrites.contains { $0.0 == "b" && $0.1 == "2" })
+    }
+
+    /// 真实场景：插电 sleep=0（永不睡）、电池 sleep=1。还原后电池必须还是 1。
+    @Test("还原不会把电池的 sleep 冲成插电的 0")
+    func doesNotClobberBatterySleep() async {
+        let executor = RecordingExecutor()
+        let settings = PowerSettings(runner: ScriptedRunner(), executor: executor)
+        var snapshot = PmsetSnapshot()
+        snapshot["sleep"] = 0
+        snapshot["sleep_battery"] = 1
+
+        _ = await settings.restore(snapshot)
+
+        let writes = executor.callsWithArguments
+            .filter { $0.1["key"] == "sleep" }
+            .map { ($0.1["scope"] ?? "a", $0.1["value"] ?? "") }
+        #expect(writes.count == 2)
+        #expect(writes.contains { $0.0 == "c" && $0.1 == "0" })
+        #expect(writes.contains { $0.0 == "b" && $0.1 == "1" })
+        #expect(!writes.contains { $0.0 == "a" })   // `-a` 一个都不许有
     }
 
     /// 没有电池的机器（台式机）不该多出一次无意义的写入。
@@ -192,5 +228,8 @@ struct DisplaySleepTests {
 
         let scoped = executor.callsWithArguments.filter { $0.1["scope"] == "b" }
         #expect(scoped.isEmpty)
+        // 台式机照旧走 `-a`，不改变原来的行为。
+        let displayWrite = executor.callsWithArguments.first { $0.1["key"] == "displaysleep" }
+        #expect(displayWrite?.1["scope"] == "a")
     }
 }

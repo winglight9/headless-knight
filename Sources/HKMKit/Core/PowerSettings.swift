@@ -76,20 +76,24 @@ public struct PowerSettings: Sendable {
             throw HKMError.commandFailed(executable: "pmset -g custom", status: customResult.status, message: customResult.stderr)
         }
         let sections = PowerSettings.parseCustom(customResult.stdout)
-        let active = sections["AC Power"] ?? sections["Battery Power"] ?? [:]
+        let battery = sections["Battery Power"]
+        let active = sections["AC Power"] ?? battery ?? [:]
         let global = (try? runner.run("/usr/bin/pmset", arguments: ["-g"]))
             .map { PowerSettings.parseGlobal($0.stdout) } ?? [:]
 
         var snapshot = PmsetSnapshot()
         snapshot["sleep"] = intValue(active["sleep"])
         snapshot["displaysleep"] = intValue(active["displaysleep"])
-        // 电池那套单独记一份：`pmset -a` 会把两套写成同一个值，还原的时候
-        // 得把电池那套再补回去（用户的机器插电 0 = 永不关屏、电池 2）。
-        snapshot["displaysleep_battery"] = intValue(sections["Battery Power"]?["displaysleep"])
         snapshot["womp"] = intValue(active["womp"])
         snapshot["powernap"] = intValue(active["powernap"])
         snapshot["tcpkeepalive"] = intValue(active["tcpkeepalive"])
         snapshot["standby"] = intValue(active["standby"])
+        // 电池那一套要**每一个键**都单独记：`pmset -a` 会把两套写成同一个值，
+        // 还原的时候得把电池那套整个补回去。以前只补了 displaysleep，于是用户的
+        // 「电池 1 分钟睡」在出门回来后变成了插电的 0（永不睡）——静悄悄改设置。
+        for key in PmsetSnapshot.perSourceKeys {
+            snapshot[PmsetSnapshot.batteryKey(for: key)] = intValue(battery?[key])
+        }
         // `disablesleep` only shows up in `pmset -g` as "SleepDisabled".
         snapshot["disablesleep"] = intValue(global["SleepDisabled"]) ?? intValue(active["disablesleep"])
         return snapshot
@@ -183,28 +187,41 @@ public struct PowerSettings: Sendable {
 
     /// Restores one key at a time so a single failure cannot block the rest.
     /// 恢复阶段不在出门流程里，失败一律按 optional 记，不吓唬用户。
+    ///
+    /// **两套电源要分开写。** `pmset -a` 会把插电和电池写成同一个值；如果快照里
+    /// 有电池那一套（笔记本），插电的键就必须用 `-c`，再把电池的键用 `-b` 写回去。
+    /// 只用 `-a` 的后果是实打实的：用户的机器插电 `sleep=0`、电池 `sleep=1`，
+    /// 出门一趟回来电池也变成「永不睡」——电量就这么耗掉了，而且没人告诉他。
     public func restore(_ snapshot: PmsetSnapshot) async -> [FailedItem] {
         var failures: [FailedItem] = []
+
         for key in PmsetSnapshot.trackedKeys {
             guard let value = snapshot[key] else { continue }
+            // 有电池那一套的键，插电这套只能写 `-c`；没有电池（台式机）就还是 `-a`。
+            // `disablesleep` 是全局键，永远 `-a`。
+            let hasBattery = snapshot[PmsetSnapshot.batteryKey(for: key)] != nil
+            let scope = hasBattery ? "c" : "a"
             do {
-                _ = try await executor.perform(.pmsetSet, arguments: ["key": key, "value": "\(value)"])
+                _ = try await executor.perform(
+                    .pmsetSet,
+                    arguments: ["key": key, "value": "\(value)", "scope": scope]
+                )
             } catch {
                 HKMLog.error(L("恢复 {0} 失败：{1}", key, error.localizedDescription))
                 failures.append(FailedItem(title: "恢复 \(key)", error: error, severity: .optional))
             }
         }
-        // `displaysleep` 上面已经用 `-a` 写了一遍（插电那套的值），电池那套要单独补。
-        // 不补的话，用户的「用电池 2 分钟关屏」会被永久改成「永不关屏」。
-        if let battery = snapshot["displaysleep_battery"] {
+
+        for key in PmsetSnapshot.perSourceKeys {
+            guard let battery = snapshot[PmsetSnapshot.batteryKey(for: key)] else { continue }
             do {
                 _ = try await executor.perform(
                     .pmsetSet,
-                    arguments: ["key": "displaysleep", "value": "\(battery)", "scope": "b"]
+                    arguments: ["key": key, "value": "\(battery)", "scope": "b"]
                 )
             } catch {
-                HKMLog.error(L("恢复电池的 displaysleep 失败：{0}", error.localizedDescription))
-                failures.append(FailedItem(title: "恢复电池关屏时间", error: error, severity: .optional))
+                HKMLog.error(L("恢复电池的 {0} 失败：{1}", key, error.localizedDescription))
+                failures.append(FailedItem(title: "恢复电池 \(key)", error: error, severity: .optional))
             }
         }
         return failures

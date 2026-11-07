@@ -8,9 +8,14 @@ final class HelperDaemon {
     private let allowedUID: uid_t
     private let runner: any CommandRunning = ShellRunner()
 
-    private static let allowedPmsetKeys: Set<String> = [
-        "disablesleep", "sleep", "womp", "powernap", "tcpkeepalive", "standby", "displaysleep", "disksleep"
-    ]
+    /// 一个连接最多占多久。客户端是连上就写一行 JSON，正常是毫秒级；
+    /// 留 5 秒是给「机器刚醒、调度被冻住」那种情况。
+    ///
+    /// 这个值以前不存在：`read` 是阻塞的，谁连上来不发换行，整个 helper 就
+    /// 永远卡在那个连接上（连接是串行处理的），后面所有请求都进不来。
+    /// 而进程还活着，`KeepAlive` 也不会重启它 —— 从外面看就是「后台服务在，
+    /// 但什么都不做」。
+    private static let requestTimeout: TimeInterval = 5
 
     init(socketPath: String = HelperPaths.socketPath) {
         self.socketPath = socketPath
@@ -93,7 +98,15 @@ final class HelperDaemon {
             return
         }
 
-        guard let line = readLine(client: client) else { return }
+        // 对端不读响应时，别让 write 把 helper 也堵死。
+        var sendTimeout = timeval(tv_sec: 5, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, socklen_t(MemoryLayout<timeval>.size))
+
+        let deadline = Date().addingTimeInterval(HelperDaemon.requestTimeout)
+        guard let line = readLine(client: client, deadline: deadline) else {
+            HKMLog.error("连接在 \(Int(HelperDaemon.requestTimeout)) 秒内没有发完请求，断开")
+            return
+        }
         guard let data = line.data(using: .utf8),
               let request = try? JSONDecoder().decode(HelperRequest.self, from: data) else {
             respond(client: client, response: HelperResponse(id: "", ok: false, errorMessage: "无法解析请求"))
@@ -114,8 +127,11 @@ final class HelperDaemon {
             guard let key = request.arguments["key"], let value = request.arguments["value"] else {
                 return .failure(id: request.id, message: "缺少 key/value")
             }
-            guard HelperDaemon.allowedPmsetKeys.contains(key) else {
+            guard HelperPolicy.isAllowedPmsetKey(key) else {
                 return .failure(id: request.id, message: "不允许修改 \(key)")
+            }
+            guard HelperPolicy.isAllowedPmsetValue(value) else {
+                return .failure(id: request.id, message: "不允许的值 \(value)")
             }
             // `-a` 全部、`-c` 插电、`-b` 电池。默认 a。
             //
@@ -123,7 +139,7 @@ final class HelperDaemon {
             // 插电是 0 = 永不关屏，电池是 2）。只用 `-a` 还原，会把电池那套也改成
             // 插电的值，用户下次用电池就再也不关屏了。
             let scope = request.arguments["scope"] ?? "a"
-            guard ["a", "c", "b"].contains(scope) else {
+            guard HelperPolicy.isAllowedPmsetScope(scope) else {
                 return .failure(id: request.id, message: "不支持的电源类型 \(scope)")
             }
             return run(request.id, "/usr/bin/pmset", ["-\(scope)", key, value])
@@ -141,28 +157,24 @@ final class HelperDaemon {
             return run(request.id, "/usr/bin/tmutil", ["enable"])
 
         case .launchctlDisable:
-            guard let label = request.arguments["label"] else {
-                return .failure(id: request.id, message: "缺少 label")
-            }
-            return run(request.id, "/bin/launchctl", ["disable", "system/\(label)"])
+            return launchctl(request.id, verb: "disable", label: request.arguments["label"])
 
         case .launchctlEnable:
-            guard let label = request.arguments["label"] else {
-                return .failure(id: request.id, message: "缺少 label")
-            }
-            return run(request.id, "/bin/launchctl", ["enable", "system/\(label)"])
+            return launchctl(request.id, verb: "enable", label: request.arguments["label"])
 
         case .launchctlBootout:
-            guard let label = request.arguments["label"] else {
-                return .failure(id: request.id, message: "缺少 label")
-            }
-            return run(request.id, "/bin/launchctl", ["bootout", "system/\(label)"], ignoreFailure: true)
+            return launchctl(request.id, verb: "bootout", label: request.arguments["label"], ignoreFailure: true)
 
         case .launchctlBootstrap:
             guard let label = request.arguments["label"] else {
                 return .failure(id: request.id, message: "缺少 label")
             }
-            let plist = "/System/Library/LaunchDaemons/\(label).plist"
+            // 路径只从白名单里生成，绝不用客户端给的字符串拼——
+            // `../../tmp/evil` 会让 launchd 以 root 去 bootstrap 任意 plist。
+            guard let plist = HelperPolicy.launchDaemonPlistPath(for: label) else {
+                HKMLog.error("拒绝 bootstrap 未授权的服务 \(label)")
+                return .failure(id: request.id, message: "不允许操作 \(label)")
+            }
             return run(request.id, "/bin/launchctl", ["bootstrap", "system", plist], ignoreFailure: true)
 
         case .bluetoothSetPower:
@@ -181,6 +193,27 @@ final class HelperDaemon {
             let value = Int(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
             return HelperResponse(id: request.id, ok: true, output: result.output, intValue: value)
         }
+    }
+
+    /// disable / enable / bootout 共用一条路：label 必须先过白名单。
+    ///
+    /// 以前这四种操作只检查「参数在不在」，label 是什么都照做。socket 是 0666，
+    /// 同一登录用户下任何进程都能连，等于把一个「停/启任意系统服务」的 root
+    /// 开关摆在了桌面上。
+    private func launchctl(
+        _ id: String,
+        verb: String,
+        label: String?,
+        ignoreFailure: Bool = false
+    ) -> HelperResponse {
+        guard let label else {
+            return .failure(id: id, message: "缺少 label")
+        }
+        guard HelperPolicy.isAllowedLaunchctlLabel(label) else {
+            HKMLog.error("拒绝 \(verb) 未授权的服务 \(label)")
+            return .failure(id: id, message: "不允许操作 \(label)")
+        }
+        return run(id, "/bin/launchctl", [verb, "system/\(label)"], ignoreFailure: ignoreFailure)
     }
 
     private func run(_ id: String, _ executable: String, _ arguments: [String], ignoreFailure: Bool = false) -> HelperResponse {
@@ -213,10 +246,25 @@ final class HelperDaemon {
         }
     }
 
-    private func readLine(client: Int32) -> String? {
+    /// 读到换行为止，最多等到 `deadline`。
+    ///
+    /// 分片 `poll` 而不是直接阻塞 `read`：截止时间是**绝对**的，客户端一个字节
+    /// 一个字节地慢慢发（每片都「有数据」）也拖不过这个时间，不会出现
+    /// 「设了 SO_RCVTIMEO 但每读一次就重置」那种假超时。
+    private func readLine(client: Int32, deadline: Date) -> String? {
         var buffer = [UInt8]()
         var chunk = [UInt8](repeating: 0, count: 4096)
         while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { return nil }
+            var descriptor = pollfd(fd: client, events: Int16(POLLIN), revents: 0)
+            let slice = Int32(max(1, min(remaining, 1) * 1000))
+            let ready = poll(&descriptor, 1, slice)
+            if ready == 0 { continue }              // 一秒一片，回到上面重新看截止时间
+            if ready < 0 {
+                if errno == EINTR { continue }
+                return nil
+            }
             let count = read(client, &chunk, chunk.count)
             if count <= 0 { break }
             for index in 0..<count {
@@ -231,4 +279,7 @@ final class HelperDaemon {
     }
 }
 
-HelperDaemon().run()
+// 测试时用 `HKM_SOCKET_PATH` 把 socket 挪到 /tmp，免得把正在运行的那个顶掉。
+// 装成 launchd 服务时环境变量来自 root 拥有的 plist，普通进程设不了它。
+let socketPath = ProcessInfo.processInfo.environment["HKM_SOCKET_PATH"] ?? HelperPaths.socketPath
+HelperDaemon(socketPath: socketPath).run()

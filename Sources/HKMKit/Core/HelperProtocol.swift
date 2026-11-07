@@ -6,9 +6,10 @@ import Foundation
 /// `codesign --force --sign -` 会给复制过去的那份重新签名，文件直接大 18KB，
 /// 字节比对永远不相等——2026-10-25 用户装一次、报一次「旧版本」，反复卡在这里。
 ///
-/// 历史：1 = 最初的版本；2 = `pmsetSet` 支持 `scope`（按电源类型分开写）。
+/// 历史：1 = 最初的版本；2 = `pmsetSet` 支持 `scope`（按电源类型分开写）；
+/// 3 = helper 内做 label 白名单与请求超时（旧 helper 不换掉，白名单就不生效）。
 public enum HelperProtocol {
-    public static let apiVersion = 2
+    public static let apiVersion = 3
 }
 
 public enum HelperOperation: String, Codable, Sendable, CaseIterable {
