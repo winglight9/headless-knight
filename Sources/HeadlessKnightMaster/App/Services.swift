@@ -101,6 +101,11 @@ protocol DisplayCutting {
 protocol IdleSleepPreventing {
     /// 现在真的拿着断言吗。这是唯一可信的状态——设置里勾着不等于拿到了。
     var isHolding: Bool { get }
+    /// 上一次想拿却被系统拒绝的原因。拿着、或者是我们主动放开的，都是 nil。
+    ///
+    /// 界面靠它区分「系统不让」和「我们没去拿」——这两件事的处置完全不同，
+    /// 混成一句话就是把责任推给系统（2026-11-07 用户抓到的那句）。
+    var lastFailureText: String? { get }
     /// 按设置持有或释放，返回最终是否拿着。
     func apply(enabled: Bool) -> Bool
 }
@@ -302,6 +307,8 @@ final class SystemIdleSleepGuard: IdleSleepPreventing {
 
     var isHolding: Bool { assertion.isHolding }
 
+    var lastFailureText: String? { assertion.lastFailure?.message }
+
     func apply(enabled: Bool) -> Bool {
         assertion.apply(enabled: enabled)
     }
@@ -375,6 +382,15 @@ struct Timing {
     var unplugPollSeconds: Double = 1.0
     /// 睡眠失败后后台重试的间隔。
     var sleepRetrySeconds: Double = 15.0
+    /// 「防止空闲睡眠」丢了自己补的间隔。
+    ///
+    /// 这条断言会丢：出门时我们主动放开、系统偶尔也会收回去。以前只在启动、
+    /// 开关、结束外出三处补一次，中间丢了就一直是丢的（2026-11-07 那台机器
+    /// 从 11-04 12:09 丢到 11-07 15:47，整整三天没人发现）。20 秒一次
+    /// `IOPMAssertionCreateWithName` 的代价约等于零。
+    var idleSleepGuardSeconds: Double = 20
+    /// 被系统明确拒绝后，下次再撞门的间隔。别每 20 秒写一条错误日志。
+    var idleSleepRefusedRetrySeconds: Double = 300
 
     // MARK: - 增强模式
 

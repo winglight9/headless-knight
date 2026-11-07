@@ -44,10 +44,7 @@ struct SettingsView: View {
                             Text(L("防止空闲睡眠"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.ink)
-                            Text(idleSleepText)
-                                .font(.system(size: 10))
-                                .foregroundStyle(idleSleepProblem ? Theme.red : Theme.tertiaryInk)
-                                .fixedSize(horizontal: false, vertical: true)
+                            idleSleepNote
                         }
                     } trailing: {
                         CapsuleToggle(isOn: state.settings.preventIdleSleep) {
@@ -172,15 +169,38 @@ struct SettingsView: View {
     /// 「防止空闲睡眠」那一行的小字。
     ///
     /// 勾着但没拿到断言时要说出来——不然用户以为机器不会睡了，结果半夜自己睡过去。
-    private var idleSleepText: String {
-        if state.settings.preventIdleSleep, !state.idleSleepHeld {
-            return L("系统没允许，这一项没生效")
+    /// 但**不许把三种情况混成一句**：出门期间放开、刚丢了正在补、系统真拒绝。
+    /// 2026-11-07 用户看到的那句「系统没允许」就是混出来的：系统其实允许，
+    /// 是我们自己放开的，而且没人去补。
+    @ViewBuilder
+    private var idleSleepNote: some View {
+        switch state.idleSleepStatus {
+        case let .refused(reason):
+            // 红字是「有件事需要你处理」，那就得能点。点了立刻再试一次。
+            Button(action: { state.retryIdleSleepNow() }) {
+                Text(L("{0} · 点这里再试", reason))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.red)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(.plain)
+        case .retrying:
+            Text(L("刚丢了，正在补上"))
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        case .away:
+            Text(L("出门期间先放开，回来自动接上"))
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.tertiaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        case .off, .held:
+            Text(L("不让机器自己睡，出门自动放开"))
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.tertiaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        return L("不让机器自己睡，出门自动放开")
-    }
-
-    private var idleSleepProblem: Bool {
-        state.settings.preventIdleSleep && !state.idleSleepHeld
     }
 
     /// 「没有内建屏」那一行的小字：说现在到底断没断，不替开关说话。

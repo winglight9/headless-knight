@@ -225,7 +225,12 @@
 "拆掉屏的机器勾上：勾上就把内建屏摘掉" = "Tick this on a screen-less Mac — it disconnects the built-in display";
 "防止空闲睡眠" = "Keep awake when idle";
 "勾上后机器不会自己睡；出门时会自动放开" = "The Mac won't sleep on its own; released automatically when you leave";
-"系统没允许，这一项没生效" = "Not allowed by macOS — this isn't active";
+"{0} · 点这里再试" = "{0} · Click to retry";
+"刚丢了，正在补上" = "Lost it — putting it back";
+"出门期间先放开，回来自动接上" = "Released while you're away; restored on return";
+"防止空闲睡眠没生效" = "Keep awake when idle isn't active";
+"没人动的时候机器会自己睡，远程会断" = "The Mac will sleep on its own; remote access drops";
+"打开系统设置" = "Open System Settings";
 "正在检查" = "Checking";
 "内建屏已断开" = "Built-in display disconnected";
 "内建屏接着" = "Built-in display still connected";

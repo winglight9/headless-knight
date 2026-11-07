@@ -66,6 +66,8 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
     /// 系统给不给这个电源断言。false 用来复现「勾了但没拿到」。
     var idleSleepGranted = true
     private(set) var idleSleepHolding = false
+    /// 最后一次请求是「要拿着」还是「放开」。区分「被拒绝」和「我们自己放开的」。
+    private(set) var idleSleepLastRequestWasEnabled = false
     /// 每一次请求的值（true = 要拿着）。用来验证「出门时放开、回来恢复」。
     private(set) var idleSleepRequests: [Bool] = []
 
@@ -488,8 +490,15 @@ final class SimulatedServices: ProcessScanning, ProcessKilling, PowerControlling
 
     var isHolding: Bool { idleSleepHolding }
 
+    /// 上一次被拒绝的原因。`idleSleepGranted = false` 时才算「系统拒绝」。
+    var lastFailureText: String? {
+        guard !idleSleepHolding, idleSleepLastRequestWasEnabled else { return nil }
+        return L("系统不允许这个程序保持清醒")
+    }
+
     func apply(enabled: Bool) -> Bool {
         idleSleepRequests.append(enabled)
+        idleSleepLastRequestWasEnabled = enabled
         let holding = enabled && idleSleepGranted
         idleSleepHolding = holding
         record("idle sleep \(holding ? "held" : "released")")

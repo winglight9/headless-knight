@@ -121,6 +121,8 @@ public final class AppState: ObservableObject {
     ///
     /// 设置里勾着不等于拿到了：断言可能被系统拒绝。设置页要照这个说话。
     @Published public private(set) var idleSleepHeld = false
+    /// 上一次想拿却被系统拒绝的原因。拿着、或者是我们主动放开的，都是 nil。
+    @Published public private(set) var idleSleepFailure: String?
     /// 内建屏此刻的真实状态。同样，开关勾着不等于屏断了。
     @Published public private(set) var builtinCutState: BuiltinCutState = .unknown
 
@@ -166,6 +168,10 @@ public final class AppState: ObservableObject {
     private var flowTask: Task<Void, Never>?
     private var unplugPollTask: Task<Void, Never>?
     private var sleepRetryTask: Task<Void, Never>?
+    /// 「防止空闲睡眠」的看守。见 `startIdleSleepGuard()`。
+    private var idleSleepGuardTask: Task<Void, Never>?
+    /// 系统明确拒绝过之后，下次再撞门的时间。没拒绝过就是 nil。
+    private var idleSleepNextRetryAt: Date?
     /// 「内建屏又被系统装回来了，再摘一次」。同一时刻只跑一个。
     private var maintainCutTask: Task<Void, Never>?
     /// 从哪一页点开设置的。关掉设置要回到那一页，而不是按 phase 猜。
@@ -316,6 +322,38 @@ public final class AppState: ObservableObject {
         session?.phase == .away
     }
 
+    /// 「防止空闲睡眠」现在到底处在哪一档。
+    ///
+    /// 以前界面只有一个 `idleSleepHeld`，于是「出门时我们主动放开」和「系统拒绝」
+    /// 长得一模一样，设置页把前者也写成「系统没允许」——把责任推给了系统。
+    /// 这两件事的处置完全不同：前者什么都不用做，后者才需要人管。
+    public enum IdleSleepStatus: Equatable {
+        /// 开关关着。
+        case off
+        /// 拿着。
+        case held
+        /// 出门期间故意放开，回来自己接上。
+        case away
+        /// 丢了，正在自己补。
+        case retrying
+        /// 系统明确拒绝，只能反复重试或者去系统设置里关掉自动睡眠。
+        case refused(String)
+    }
+
+    public var idleSleepStatus: IdleSleepStatus {
+        guard settings.preventIdleSleep else { return .off }
+        if idleSleepHeld { return .held }
+        if isAwayPhase { return .away }
+        if let failure = idleSleepFailure { return .refused(failure) }
+        return .retrying
+    }
+
+    /// 要不要在界面上报出来。只有「系统拒绝」值得打断用户——丢了的自己会补上。
+    public var idleSleepNeedsAttention: Bool {
+        if case .refused = idleSleepStatus { return true }
+        return false
+    }
+
     /// 决定「能不能睡」的失败项——只有这些才进阻塞页。
     public var criticalFailures: [FailedItem] {
         failedItems.filter(\.isCritical)
@@ -337,6 +375,21 @@ public final class AppState: ObservableObject {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    /// 打开「电池 / 节能」设置。
+    ///
+    /// 这是「系统不让程序保持清醒」时用户唯一能自己动手的地方：把「电脑进入睡眠」
+    /// 设成永不。面板在 macOS 13 之后挪到了「电池」，老系统还在「节能」，
+    /// 两个都试，别让按钮点下去没反应。
+    public func openEnergySettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Battery-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.energysaver",
+        ]
+        for candidate in candidates {
+            if let url = URL(string: candidate), NSWorkspace.shared.open(url) { return }
+        }
     }
 
     public var sleepDelaySeconds: Int { settings.sleepDelaySeconds }
@@ -424,6 +477,8 @@ public final class AppState: ObservableObject {
     /// Task，它可能在「开始外出」刚记完显示器基线之后才执行，把基线里的内屏删掉，
     /// 于是被判成「已经拔线」，机器提前睡。测试里这个竞态必现，真机只是概率低。
     public func startupSystemTasks() {
+        // 断言得有人看着。放在最前面：它跟「有没有内建屏」无关，不能跟着一起被跳过。
+        startIdleSleepGuard()
         guard settings.noBuiltinDisplay else { return }
         Task { await applyBuiltinCut(true) }
     }
@@ -501,6 +556,7 @@ public final class AppState: ObservableObject {
     /// 装回来。设置页显示的必须是此刻的事实，否则又变成软件在替系统说话。
     private func refreshSystemChips() {
         idleSleepHeld = deps.idleSleep.isHolding
+        if idleSleepHeld { idleSleepFailure = nil }
         if deps.displayCutter.isAvailable {
             builtinCutState = deps.displayCutter.isBuiltinActive ? .connected : .disconnected
             // 勾着但屏又回来了：交给维持逻辑去重断，界面下一拍就会变。
@@ -802,6 +858,10 @@ public final class AppState: ObservableObject {
         // 睡前的 `sleep 1` 还能让机器自己睡回去——留着就等于把这条退路堵死。
         _ = deps.idleSleep.apply(enabled: false)
         idleSleepHeld = false
+        // 这是我们自己放开的，不是系统拒绝。不清掉的话，设置页会把「出门期间」
+        // 说成「系统没允许」。
+        idleSleepFailure = nil
+        idleSleepNextRetryAt = nil
         // 进度清单从零开始：这个流程可能因为装了后台服务而重跑一遍。
         resetCompletedActions()
 
@@ -1608,14 +1668,64 @@ public final class AppState: ObservableObject {
     public func togglePreventIdleSleep() {
         settings.preventIdleSleep.toggle()
         try? deps.store.saveSettings(settings)
+        idleSleepNextRetryAt = nil
         applyIdleSleepSetting()
         HKMLog.info("防止空闲睡眠：\(settings.preventIdleSleep ? "开" : "关")，实际\(idleSleepHeld ? "拿到了" : "没拿到")")
     }
 
     private func applyIdleSleepSetting() {
         idleSleepHeld = deps.idleSleep.apply(enabled: settings.preventIdleSleep)
+        if idleSleepHeld || !settings.preventIdleSleep {
+            idleSleepFailure = nil
+        } else {
+            idleSleepFailure = deps.idleSleep.lastFailureText ?? L("系统不允许这个程序保持清醒")
+        }
         if settings.preventIdleSleep, !idleSleepHeld {
-            HKMLog.error("设置要防止空闲睡眠，但系统没给断言")
+            HKMLog.error("设置要防止空闲睡眠，但系统没给断言：\(idleSleepFailure ?? "未知")")
+        }
+    }
+
+    /// 用户点了那条红字。立刻再试一次，不等看守的下一拍。
+    public func retryIdleSleepNow() {
+        guard settings.preventIdleSleep else { return }
+        idleSleepNextRetryAt = nil
+        applyIdleSleepSetting()
+        HKMLog.info("手动重试防空闲睡眠：\(idleSleepHeld ? "拿到了" : "还是没拿到")")
+    }
+
+    /// 「防止空闲睡眠」的看守。
+    ///
+    /// 这条断言没有谁替我们保管：出门流程会主动放开，系统在唤醒、电源域重建之后
+    /// 也可能收回去。以前只在启动、开关、结束外出这三处补一次，中间丢了就一直是
+    /// 丢的——2026-11-07 那台机器从 11-04 12:09 一直丢到 15:47，用户只看到设置页
+    /// 上一句「系统没允许」，机器则安安静静地自己睡。
+    ///
+    /// 所以这里自己盯着：按设置该拿着却没拿着，就补上。补不上（系统真拒绝）就退避，
+    /// 别每 20 秒往日志里灌一条错误。
+    private func startIdleSleepGuard() {
+        idleSleepGuardTask?.cancel()
+        let interval = max(1, timing.idleSleepGuardSeconds)
+        idleSleepGuardTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                if Task.isCancelled { return }
+                self?.guardIdleSleepTick()
+            }
+        }
+    }
+
+    /// 看守的一次心跳。也用于「睡醒之后」和「结束外出」之后的即时核对。
+    func guardIdleSleepTick() {
+        // 出门期间故意不拿：留着它会把「机器该睡」这条退路堵死。
+        guard settings.preventIdleSleep, !idleSleepHeld, !isAwayPhase, !isBusy else { return }
+        if let next = idleSleepNextRetryAt, deps.clock.now < next { return }
+        let wasFailing = idleSleepFailure != nil
+        applyIdleSleepSetting()
+        if idleSleepHeld {
+            idleSleepNextRetryAt = nil
+            if wasFailing { HKMLog.info("防止空闲睡眠：补上了，之前系统拒绝过") }
+        } else {
+            idleSleepNextRetryAt = deps.clock.now.addingTimeInterval(timing.idleSleepRefusedRetrySeconds)
         }
     }
 
@@ -2267,6 +2377,9 @@ public final class AppState: ObservableObject {
 
     /// 系统刚醒。趁用户还在插显示器，先把 `pmset -g log` 读进内存。
     public func systemDidWake() {
+        // 睡醒之后断言常常已经不在手里了（进程被挂起过、电源域重建）。先核一遍，
+        // 这一步不花任何代价。出门期间 `guardIdleSleepTick` 自己会让路。
+        guardIdleSleepTick()
         guard session?.phase == .away else { return }
         HKMLog.info("系统唤醒 → 预读唤醒日志")
         warmPowerLog()

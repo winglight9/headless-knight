@@ -260,4 +260,78 @@ struct IdleSleepAssertionTests {
         let result = AssertionScanner().blockers(from: AssertionScan(entries: entries))
         #expect(result.blockers.isEmpty)
     }
+
+    @Test("出门期间放开：说「出门期间」，不许说成系统拒绝")
+    func awayIsNotARefusal() async {
+        let (sim, state) = makeBuiltinHarness()
+        sim.blockers = []
+        sim.onlineIDs = [3]
+        sim.builtinIDs = [1]
+
+        state.beginAway()
+        await waitUntil { state.screen == .readyToUnplug }
+        await state.waitForFlow()
+
+        // 2026-11-07 用户看到的就是这里：断言被我们主动放开了，设置页却写着
+        // 「系统没允许」。系统其实允许，是我们自己放手，而且没人去补。
+        #expect(state.idleSleepStatus == .away)
+        #expect(state.idleSleepFailure == nil)
+        #expect(!state.idleSleepNeedsAttention)
+    }
+
+    @Test("被系统拒绝：说清楚原因，并且能点着重试")
+    func refusedIsActionable() {
+        let (sim, state) = makeBuiltinHarness(preventIdleSleep: true) { $0.idleSleepGranted = false }
+        state.startupSystemTasks()
+
+        #expect(!state.idleSleepHeld)
+        guard case let .refused(reason) = state.idleSleepStatus else {
+            Issue.record("应该是 refused，实际 \(state.idleSleepStatus)")
+            return
+        }
+        #expect(!reason.isEmpty)
+        #expect(state.idleSleepNeedsAttention)
+
+        // 系统松口之后，用户点一下就得真的拿到，而不是只把红字藏起来。
+        sim.idleSleepGranted = true
+        state.retryIdleSleepNow()
+        #expect(state.idleSleepStatus == .held)
+        #expect(state.idleSleepFailure == nil)
+        #expect(!state.idleSleepNeedsAttention)
+    }
+
+    @Test("丢了自己补上：不用用户回来点")
+    func guardPutsItBack() {
+        let (sim, state) = makeBuiltinHarness(preventIdleSleep: true) { $0.idleSleepGranted = false }
+        state.startupSystemTasks()
+        #expect(!state.idleSleepHeld)
+
+        sim.idleSleepGranted = true
+        // 被拒绝过会退避，别每 20 秒撞一次门。时间推过退避窗口，看守自己就该补上。
+        sim.currentDate = sim.currentDate.addingTimeInterval(400)
+        state.guardIdleSleepTick()
+
+        #expect(state.idleSleepHeld)
+        #expect(state.idleSleepStatus == .held)
+    }
+
+    @Test("出门期间看守不许把断言抢回来")
+    func guardStaysOutOfAway() async {
+        let (sim, state) = makeBuiltinHarness()
+        sim.blockers = []
+        sim.onlineIDs = [3]
+        sim.builtinIDs = [1]
+
+        state.beginAway()
+        await waitUntil { state.screen == .readyToUnplug }
+        await state.waitForFlow()
+        #expect(!sim.idleSleepHolding)
+
+        sim.currentDate = sim.currentDate.addingTimeInterval(400)
+        state.guardIdleSleepTick()
+
+        // 抢回来就等于把「机器能自己睡」这条退路堵死，出门流程会卡在「还没睡着」。
+        #expect(!sim.idleSleepHolding)
+        #expect(state.idleSleepStatus == .away)
+    }
 }

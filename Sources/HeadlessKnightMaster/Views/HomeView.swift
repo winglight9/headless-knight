@@ -42,6 +42,34 @@ struct HomeView: View {
                     .padding(.bottom, 10)
                 }
 
+                // 「防止空闲睡眠」没拿住。以前这条只写在设置页最底下，用户不进设置
+                // 就永远不知道机器会自己睡（2026-11-07 的原话：「一定要点到设置
+                // 才能看到这个提示」）。这是会让人在外面连不上机器的事，得放首页。
+                if state.idleSleepNeedsAttention {
+                    WarningBox {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L("防止空闲睡眠没生效"))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.ink)
+                            // 首页只说后果和动作。技术原因（系统拒绝的返回码）留在
+                            // 设置页——这里多一行字，用户就少看一眼。
+                            Text(L("没人动的时候机器会自己睡，远程会断"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.tertiaryInk)
+                                .lineSpacing(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.bottom, 10)
+
+                    // 再点一次多半还是拒绝，所以给的是唯一真能解决的那条路：
+                    // 去系统设置里把自动睡眠关掉。
+                    PopupButton(title: L("打开系统设置"), style: .ghost) {
+                        state.openEnergySettings()
+                    }
+                    .padding(.bottom, 10)
+                }
+
                 PopupButton(title: L("开始外出模式"), isEnabled: !state.isBusy) {
                     state.beginAway()
                 }

@@ -32,6 +32,12 @@ public final class SleepAssertion: @unchecked Sendable {
 
     private let lock = NSLock()
     private var assertionID: IOPMAssertionID = 0
+    /// 上一次「要拿却没拿到」时系统给的原因。
+    ///
+    /// 有它才能把「系统拒绝」和「我们自己放开了」分开。以前只有一个 Bool，
+    /// 两种完全不同的情况在界面上是同一句话——于是设置页把「出门时故意放开」
+    /// 说成了「系统没允许」（2026-11-07 用户抓到的就是这句）。
+    private var lastFailureStorage: Failure?
     private let reason: String
 
     public init(reason: String = "无头骑士大师：保持清醒") {
@@ -49,6 +55,13 @@ public final class SleepAssertion: @unchecked Sendable {
         return assertionID != 0
     }
 
+    /// 上一次想拿却没拿到的原因。拿着、或者从没试过，都是 nil。
+    public var lastFailure: Failure? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastFailureStorage
+    }
+
     /// 拿到断言。重复调用是幂等的。
     @discardableResult
     public func hold() -> Result<Void, Failure> {
@@ -64,10 +77,13 @@ public final class SleepAssertion: @unchecked Sendable {
             &id
         )
         guard result == kIOReturnSuccess else {
+            let failure: Failure = result == kIOReturnNotPermitted ? .notPermitted : .unknown(result)
+            lastFailureStorage = failure
             HKMLog.error("防空闲睡眠断言没拿到：\(result)")
-            return .failure(result == kIOReturnNotPermitted ? .notPermitted : .unknown(result))
+            return .failure(failure)
         }
         assertionID = id
+        lastFailureStorage = nil
         HKMLog.info("拿到防空闲睡眠断言 #\(id)")
         return .success(())
     }
@@ -76,6 +92,8 @@ public final class SleepAssertion: @unchecked Sendable {
     public func release() {
         lock.lock()
         defer { lock.unlock() }
+        // 主动放开不是失败，原因得清掉，否则「出门时放开」会一直被读成「系统拒绝」。
+        lastFailureStorage = nil
         guard assertionID != 0 else { return }
         IOPMAssertionRelease(assertionID)
         HKMLog.info("放掉防空闲睡眠断言 #\(assertionID)")

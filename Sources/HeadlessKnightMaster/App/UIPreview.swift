@@ -57,6 +57,17 @@ enum UIPreview {
         },
         Shot(name: "8-onboarding", scenario: "success") { state, _ in
             state.replayOnboarding()
+        },
+        // 「系统不给断言」这一档以前只在设置页里有一句红字，首页看不到（2026-11-07
+        // 用户的意见）。这两张用来盯住「首页要报、设置页要能点」。
+        Shot(name: "9-idle-refused", scenario: "success") { state, sim in
+            sim.idleSleepGranted = false
+            state.retryIdleSleepNow()
+        },
+        Shot(name: "10-settings-refused", scenario: "success") { state, sim in
+            sim.idleSleepGranted = false
+            state.retryIdleSleepNow()
+            state.showSettings()
         }
     ]
 
