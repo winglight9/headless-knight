@@ -1716,8 +1716,7 @@ public final class AppState: ObservableObject {
 
     /// 看守的一次心跳。也用于「睡醒之后」和「结束外出」之后的即时核对。
     func guardIdleSleepTick() {
-        // 出门期间故意不拿：留着它会把「机器该睡」这条退路堵死。
-        guard settings.preventIdleSleep, !idleSleepHeld, !isAwayPhase, !isBusy else { return }
+        guard settings.preventIdleSleep, !idleSleepHeld, idleSleepAllowedNow else { return }
         if let next = idleSleepNextRetryAt, deps.clock.now < next { return }
         let wasFailing = idleSleepFailure != nil
         applyIdleSleepSetting()
@@ -1726,6 +1725,21 @@ public final class AppState: ObservableObject {
             if wasFailing { HKMLog.info("防止空闲睡眠：补上了，之前系统拒绝过") }
         } else {
             idleSleepNextRetryAt = deps.clock.now.addingTimeInterval(timing.idleSleepRefusedRetrySeconds)
+        }
+    }
+
+    /// 现在该不该拿着这条断言。
+    ///
+    /// 只有「在家」才该拿。出门流程从放掉断言到 `session.phase` 变成 away 之间有几秒，
+    /// 这几秒里要是看守把它抢回来，后面流程真挂了就连「`sleep 1` 让它自己睡回去」这条
+    /// 退路都没有了——那正是 `performAwaySequence` 里放开它的理由。
+    private var idleSleepAllowedNow: Bool {
+        guard !isAwayPhase else { return false }
+        switch screen {
+        case .home, .settings, .report, .onboarding:
+            return true
+        case .scanning, .detecting, .closing, .blocked, .readyToUnplug, .away, .auditing:
+            return false
         }
     }
 
